@@ -103,6 +103,7 @@ function createCard(member) {
   const action = createButton(
     selected ? "Aus Arbeitszelle entfernen" : "Zur Arbeitszelle hinzufügen",
   );
+  action.dataset.memberAction = member.id;
   action.setAttribute("aria-pressed", String(selected));
   action.disabled = !selected && cellIsFull;
   if (action.disabled) action.setAttribute("aria-describedby", "cell-limit-message");
@@ -199,7 +200,7 @@ function renderSelection() {
     details.append(text("strong", member.name), text("p", member.role));
     const remove = createButton(`${member.name} entfernen`, "remove-button");
     remove.setAttribute("aria-label", `${member.name} aus der Arbeitszelle entfernen`);
-    remove.addEventListener("click", () => selectMember(member.id));
+    remove.addEventListener("click", () => selectMember(member.id, true));
     item.append(details, remove);
     list.append(item);
   }
@@ -210,18 +211,25 @@ function render() {
   const discoveryActive = state.query !== "" || state.activeExpertise.size > 0;
   elements.search.value = state.query;
   elements.clearDiscovery.hidden = !discoveryActive;
-  renderFilters();
   renderTeam();
   renderSelection();
 }
 
-function selectMember(memberId) {
+function selectMember(memberId, fromSummary = false) {
   try {
     state = {
       ...state,
       selectedIds: toggleSelection(state.selectedIds, memberId, state.members),
     };
     render();
+    const cardAction = document.querySelector(`[data-member-action="${memberId}"]`);
+    if (cardAction) {
+      cardAction.focus();
+    } else if (fromSummary && !elements.clearCell.disabled) {
+      elements.clearCell.focus();
+    } else {
+      elements.search.focus();
+    }
   } catch (error) {
     if (error instanceof AppError && error.code === ERROR_CODES.CELL_LIMIT) {
       render();
@@ -233,6 +241,7 @@ function selectMember(memberId) {
 
 function resetDiscovery() {
   state = clearDiscovery(state);
+  renderFilters();
   render();
   elements.search.focus();
 }
@@ -249,6 +258,7 @@ function toLoadError(error) {
 
 async function loadTeam() {
   state = { ...state, status: "loading", error: null, members: [] };
+  renderFilters();
   render();
   try {
     let response;
@@ -278,6 +288,7 @@ async function loadTeam() {
   } catch (error) {
     state = { ...state, status: "error", error: toLoadError(error) };
   }
+  renderFilters();
   render();
 }
 
