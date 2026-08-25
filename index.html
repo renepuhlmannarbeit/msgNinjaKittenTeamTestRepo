@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Finde passende Ninja Kittens für eine kleine Arbeitszelle."
+    />
+    <title>Ninja Kitten Team Board</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="container hero__content">
+        <div>
+          <p class="eyebrow">Ninja Kitten Team</p>
+          <h1>Die passende Arbeitszelle zusammenstellen</h1>
+          <p class="intro">
+            Durchsuche das Team nach Aufgabe und Fachgebiet. Wähle bis zu vier
+            Ninja Kittens für deine nächste Zusammenarbeit.
+          </p>
+        </div>
+        <section class="cell-status" aria-labelledby="cell-status-title">
+          <p id="cell-status-title" class="eyebrow">Arbeitszelle</p>
+          <p id="cell-count" class="cell-status__count">0 von 4 gewählt</p>
+          <p id="cell-limit-message" class="hint" hidden></p>
+        </section>
+      </div>
+    </header>
+
+    <main class="container layout">
+      <section class="discovery" aria-labelledby="discovery-title">
+        <h2 id="discovery-title">Team entdecken</h2>
+        <form id="discovery-form" class="discovery-form">
+          <div class="search-control">
+            <label for="team-search">Team durchsuchen</label>
+            <input
+              id="team-search"
+              name="query"
+              type="search"
+              autocomplete="off"
+              placeholder="Name, Rolle oder Mission"
+            />
+          </div>
+          <fieldset id="expertise-filters" class="filters">
+            <legend>Fachgebiete</legend>
+            <div id="filter-options" class="filter-options"></div>
+          </fieldset>
+          <button
+            id="clear-discovery"
+            class="button button--secondary"
+            type="button"
+            hidden
+          >
+            Filter und Suche zurücksetzen
+          </button>
+        </form>
+
+        <div class="results-heading">
+          <p id="result-summary" aria-live="polite">Team wird geladen …</p>
+        </div>
+        <section
+          id="team-region"
+          class="team-region"
+          aria-busy="true"
+          aria-label="Teammitglieder"
+        >
+          <p class="status-card">Team wird geladen …</p>
+        </section>
+      </section>
+
+      <aside class="work-cell" aria-labelledby="work-cell-title">
+        <div class="work-cell__heading">
+          <div>
+            <p class="eyebrow">Deine Auswahl</p>
+            <h2 id="work-cell-title">Arbeitszelle</h2>
+          </div>
+          <button id="clear-cell" class="button button--text" type="button" disabled>
+            Auswahl leeren
+          </button>
+        </div>
+        <div id="selected-members" aria-live="polite">
+          <p class="empty-cell">
+            Noch niemand gewählt. Wähle bis zu vier passende Teammitglieder aus
+            den Karten.
+          </p>
+        </div>
+      </aside>
+    </main>
+
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>
