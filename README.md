@@ -24,6 +24,8 @@ Die Anwendung benötigt weder Framework noch Buildschritt noch externe Abhängig
 - `data/team.json` ist die einzige Quelle für die zwölf Mitglieder.
 - `scripts/server.mjs` ist ein lokaler, dependency-freier Entwicklungsserver.
 - `tests/domain.test.js` prüft die Fachregeln mit dem Node-Test-Runner.
+- `tests/browser/acceptance.spec.mjs` prüft Tastaturfokus, Live-Status und den
+  320px-Viewport mit Chromium in der Required CI.
 
 ## Datenvertrag
 
@@ -65,6 +67,7 @@ an Loopback und ist nur für die lokale Entwicklung vorgesehen.
 ```sh
 npm run check
 npm test
+npm run test:browser
 # oder ohne npm:
 node --check src/domain.js
 node --check src/app.js
@@ -75,6 +78,9 @@ node --test
 Die Domain-Suite prüft den echten 12er-Datensatz, Vertragsfehler,
 Suchnormalisierung, Mission-/Profilsuche, Filterlogik, getrennte Resets sowie
 Auswahlgrenze und Entfernen.
+
+Der Browser-Test startet den lokalen Server selbst. Einmalig wird dafür der
+Chromium-Browser von Playwright benötigt: `npx playwright install chromium`.
 
 ## Manuelle Abnahme
 
