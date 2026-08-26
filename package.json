@@ -7,6 +7,10 @@
   "scripts": {
     "start": "node scripts/server.mjs",
     "check": "node --check src/domain.js && node --check src/app.js && node --check scripts/server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
   }
 }
