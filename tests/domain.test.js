@@ -6,11 +6,15 @@ import {
   AppError,
   ERROR_CODES,
   MAX_CELL_SIZE,
+  MAX_FRAGMENT_LENGTH,
+  MAX_FRAGMENT_TOKENS,
   clearCell,
   clearDiscovery,
   filterMembers,
   listExpertise,
   normalizeQuery,
+  restoreCell,
+  serializeCell,
   toggleSelection,
   validateTeam,
 } from "../src/domain.js";
@@ -133,4 +137,43 @@ test("Auswahl schützt gegen unbekannte IDs und Limitüberschreitung, erlaubt En
   assert.equal(filteredOut.some(({ id }) => id === team[1].id), false);
   const removedFilteredMember = toggleSelection(selected, team[1].id, team);
   assert.equal(removedFilteredMember.has(team[1].id), false);
+});
+
+test("Arbeitszellen-Links serialisieren nur bekannte, eindeutige ausgewählte IDs", () => {
+  assert.equal(
+    serializeCell(new Set(["fronti", "backendi", "unbekannt"]), team),
+    "#cell=fronti,backendi",
+  );
+  expectCode(() => serializeCell([], team), ERROR_CODES.INVALID_ARGUMENT);
+});
+
+test("Arbeitszellen-Links werden in Fragmentreihenfolge best-effort wiederhergestellt", () => {
+  const restored = restoreCell(
+    "#cell=fronti,fronti,unbekannt,backendi,testihesti,desiresi,orchestoni",
+    team,
+  );
+  assert.deepEqual([...restored.selectedIds], ["fronti", "backendi", "testihesti", "desiresi"]);
+  assert.deepEqual(restored.ignored, { unknown: 1, duplicate: 1, overflow: 1 });
+  assert.equal(restored.hasCell, true);
+  assert.equal(restored.invalid, false);
+});
+
+test("fehlende, leere und fehlerhafte Arbeitszellen-Fragmente bleiben sicher", () => {
+  assert.equal(restoreCell("#other=fronti", team).hasCell, false);
+  assert.deepEqual([...restoreCell("#cell=", team).selectedIds], []);
+  const malformed = restoreCell("#cell=%E0%A4%A", team);
+  assert.equal(malformed.invalid, true);
+  assert.deepEqual([...malformed.selectedIds], []);
+  assert.equal(restoreCell(null, team).invalid, true);
+});
+
+test("überlange oder tokenreiche Arbeitszellen-Fragmente werden atomar verworfen", () => {
+  const tooLong = restoreCell(`#cell=${"a".repeat(MAX_FRAGMENT_LENGTH)}`, team);
+  assert.equal(tooLong.invalid, true);
+  const tooManyTokens = restoreCell(
+    `#cell=${Array(MAX_FRAGMENT_TOKENS + 1).fill("fronti").join(",")}`,
+    team,
+  );
+  assert.equal(tooManyTokens.invalid, true);
+  assert.deepEqual([...tooManyTokens.selectedIds], []);
 });

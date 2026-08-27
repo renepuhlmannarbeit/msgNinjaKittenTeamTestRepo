@@ -76,10 +76,16 @@
             <p class="eyebrow">Deine Auswahl</p>
             <h2 id="work-cell-title">Arbeitszelle</h2>
           </div>
-          <button id="clear-cell" class="button button--text" type="button" disabled>
-            Auswahl leeren
-          </button>
+          <div class="work-cell__actions">
+            <button id="copy-cell" class="button button--secondary" type="button" disabled>
+              Arbeitszelle teilen
+            </button>
+            <button id="clear-cell" class="button button--text" type="button" disabled>
+              Auswahl leeren
+            </button>
+          </div>
         </div>
+        <p id="share-status" class="share-status" role="status" aria-live="polite" aria-atomic="true"></p>
         <div id="selected-members" aria-live="polite">
           <p class="empty-cell">
             Noch niemand gewählt. Wähle bis zu vier passende Teammitglieder aus
