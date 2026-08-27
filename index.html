@@ -77,6 +77,9 @@
             <h2 id="work-cell-title">Arbeitszelle</h2>
           </div>
           <div class="work-cell__actions">
+            <button id="create-mission" class="button" type="button" disabled aria-describedby="mission-cell-hint">
+              Missionsakte erstellen
+            </button>
             <button id="copy-cell" class="button button--secondary" type="button" disabled>
               Arbeitszelle teilen
             </button>
@@ -85,6 +88,7 @@
             </button>
           </div>
         </div>
+        <p id="mission-cell-hint" class="hint">Wähle 1 bis 4 Teammitglieder, um eine Missionsakte zu erstellen.</p>
         <p id="share-status" class="share-status" role="status" aria-live="polite" aria-atomic="true"></p>
         <div id="selected-members" aria-live="polite">
           <p class="empty-cell">
@@ -93,6 +97,27 @@
           </p>
         </div>
       </aside>
+
+      <section id="mission-region" class="mission-panel" aria-labelledby="mission-section-title" aria-busy="false">
+        <h2 id="mission-section-title">Missionsakte</h2>
+        <p id="mission-announcer" class="share-status" role="status" aria-live="polite" aria-atomic="true"></p>
+        <div id="mission-error" class="status-card status-card--error" role="alert" hidden></div>
+        <div id="mission-view">
+          <p class="status-card">Öffne aus einer Arbeitszelle eine neue Missionsakte oder rufe einen <code>#mission=…</code>-Link auf.</p>
+        </div>
+      </section>
+
+      <section class="mission-panel backup-panel" aria-labelledby="backup-title">
+        <h2 id="backup-title">Sicherung und Wiederherstellung</h2>
+        <p>Prüfe eine Sicherung zuerst in der Vorschau. Erst eine zweite, bewusste Aktion übernimmt sie.</p>
+        <div class="mission-actions">
+          <button id="export-missions" class="button button--secondary" type="button">Missionsakten exportieren</button>
+          <label for="restore-file">JSON-Sicherung auswählen</label>
+          <input id="restore-file" type="file" accept="application/json,.json" />
+          <button id="preview-restore" class="button button--secondary" type="button">Wiederherstellung prüfen</button>
+        </div>
+        <div id="restore-preview" class="restore-preview" role="status"></div>
+      </section>
     </main>
 
     <script type="module" src="src/app.js"></script>

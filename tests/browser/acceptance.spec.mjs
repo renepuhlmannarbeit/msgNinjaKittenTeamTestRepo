@@ -114,3 +114,88 @@ test("Tastatur, Live-Status und 320px-Viewport bleiben verwendbar", async ({
     "cell-limit-message",
   );
 });
+
+test("Missionsakte wird erstellt, über Hash fortgesetzt und vorwärts abgeschlossen", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+
+  await page.getByLabel("Titel").fill("Release absichern");
+  await page.getByLabel("Gewünschtes Ergebnis").fill("Ein überprüfbarer Release");
+  await page.getByLabel("Randbedingungen").fill("Keine externen Dienste");
+  await page.getByLabel("Kriterium 1").fill("Alle Prüfungen sind grün");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+
+  await expect(page).toHaveURL(/#mission=[A-Za-z0-9_-]{16,64}$/);
+  await expect(page.getByRole("heading", { name: "Release absichern" })).toBeFocused();
+  const missionUrl = page.url();
+  await page.reload();
+  await expect(page).toHaveURL(missionUrl);
+  await expect(page.getByText("Status: Entwurf")).toBeVisible();
+  await page.getByRole("button", { name: "Als bereit markieren" }).click();
+  await expect(page.getByText("Status: Bereit", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Als abgeschlossen markieren" }).click();
+  await expect(page.getByText("Status: Abgeschlossen", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Missionsakte bearbeiten" })).toHaveCount(0);
+});
+
+test("Validierung erhält Eingaben; Export und zweistufiger Restore bleiben zugänglich", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+  await page.getByLabel("Titel").fill("Bleibt erhalten");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await expect(page.locator("#mission-validation-summary")).toBeFocused();
+  await expect(page.getByLabel("Titel")).toHaveValue("Bleibt erhalten");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Missionsakten exportieren" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("missions-v1.json");
+  const exportPath = await download.path();
+  await page.setInputFiles("#restore-file", exportPath);
+  await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
+  await expect(page.getByRole("heading", { name: "Vorschau bereit" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Geprüfte Sicherung wiederherstellen" })).toBeFocused();
+  await page.getByRole("button", { name: "Geprüfte Sicherung wiederherstellen" }).click();
+  await expect(page.locator("#mission-announcer")).toHaveText("Sicherung wiederhergestellt.");
+});
+
+test("Revisionskonflikt und Netzwerkfehler bewahren den lokalen Entwurf", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+  await page.getByLabel("Titel").fill("Konfliktbasis");
+  await page.getByLabel("Gewünschtes Ergebnis").fill("Ergebnis");
+  await page.getByLabel("Randbedingungen").fill("Grenzen");
+  await page.getByLabel("Kriterium 1").fill("Beweis");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await page.getByRole("button", { name: "Missionsakte bearbeiten" }).click();
+  await page.getByLabel("Titel").fill("Lokaler Konfliktentwurf");
+  await page.route("**/api/missions/*", async (route) => {
+    if (route.request().method() === "PUT") await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: { code: "REVISION_CONFLICT", message: "conflict", details: { currentRevision: 2 } } }) });
+    else await route.continue();
+  });
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
+  await expect(page.locator("#mission-error")).toContainText("Deine Eingaben bleiben erhalten");
+  await expect(page.getByLabel("Titel")).toHaveValue("Lokaler Konfliktentwurf");
+});
+
+test("Restore lehnt ungültige, zu große und neuere Sicherungen ohne Übernahme ab", async ({ page }) => {
+  await page.goto("/");
+  await page.setInputFiles("#restore-file", { name: "kaputt.json", mimeType: "application/json", buffer: Buffer.from("{") });
+  await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
+  await expect(page.locator("#mission-error")).toContainText("ungültig");
+
+  await page.setInputFiles("#restore-file", { name: "gross.json", mimeType: "application/json", buffer: Buffer.alloc(128 * 1024 + 1, "x") });
+  await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
+  await expect(page.locator("#mission-error")).toContainText("zu groß");
+
+  const future = { schemaVersion: 2, storeRevision: 0, missions: [] };
+  await page.setInputFiles("#restore-file", { name: "zukunft.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(future)) });
+  await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
+  await expect(page.locator("#mission-error")).toContainText("nicht unterstützte neuere Version");
+  await expect(page.locator("#apply-restore")).toHaveCount(0);
+});
