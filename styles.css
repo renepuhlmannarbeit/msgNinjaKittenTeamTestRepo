@@ -85,7 +85,10 @@ input[type="search"] { width: 100%; min-height: 2.75rem; padding: var(--space-2)
 .status-card h3 { margin-top: 0; }
 .status-card .button { margin-top: var(--space-4); }
 .work-cell { align-self: start; }
-.work-cell__heading { display: flex; gap: var(--space-4); align-items: start; justify-content: space-between; }
+.work-cell__heading { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: start; justify-content: space-between; }
+.work-cell__actions { display: flex; flex: 1 1 12rem; flex-wrap: wrap; gap: var(--space-2); justify-content: end; }
+.work-cell__actions .button--secondary { justify-self: auto; }
+.share-status { min-height: 1.5rem; margin: var(--space-4) 0 0; color: var(--muted); }
 .selected-list { display: grid; gap: var(--space-3); margin: var(--space-6) 0 0; padding: 0; list-style: none; }
 .selected-member { display: flex; gap: var(--space-3); align-items: center; justify-content: space-between; padding-top: var(--space-3); border-top: 1px solid var(--line); }
 .selected-member p { margin: 0; color: var(--muted); font-size: 0.875rem; }

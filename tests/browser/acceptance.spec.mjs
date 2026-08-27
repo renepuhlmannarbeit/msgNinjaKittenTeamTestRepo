@@ -1,5 +1,41 @@
 import { expect, test } from "@playwright/test";
 
+test("Fragment-Link stellt eine Arbeitszelle wieder her und meldet Bereinigung", async ({ page }) => {
+  await page.goto("/#cell=fronti,fronti,unbekannt,backendi,testihesti,desiresi,orchestoni");
+
+  await expect(page.locator("#cell-count")).toHaveText("4 von 4 gewählt");
+  await expect(page.locator("#share-status")).toHaveText(
+    "Arbeitszelle mit 4 Mitgliedern wiederhergestellt. Unbekannte, doppelte oder weitere Einträge wurden ausgelassen.",
+  );
+  await expect(page.locator("#share-status")).toHaveAttribute("role", "status");
+  await expect(page.getByRole("button", { name: "Arbeitszelle teilen" })).toBeEnabled();
+});
+
+test("Teilen meldet Erfolg und Clipboard-Fehler zugänglich", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  const share = page.getByRole("button", { name: "Arbeitszelle teilen" });
+  await expect(share).toBeEnabled();
+
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await share.click();
+  await expect(page.locator("#share-status")).toHaveText("Link zur Arbeitszelle kopiert.");
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("#cell=");
+
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new Error("blocked")) },
+    });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Arbeitszelle teilen" }).click();
+  await expect(page.locator("#share-status")).toHaveText(
+    "Link konnte nicht kopiert werden. Bitte kopiere ihn aus der Adresszeile.",
+  );
+});
+
 test("Tastatur, Live-Status und 320px-Viewport bleiben verwendbar", async ({
   page,
 }) => {

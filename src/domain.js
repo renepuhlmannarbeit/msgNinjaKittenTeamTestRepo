@@ -1,5 +1,7 @@
 export const MAX_CELL_SIZE = 4;
 export const EXPECTED_TEAM_SIZE = 12;
+export const MAX_FRAGMENT_LENGTH = 512;
+export const MAX_FRAGMENT_TOKENS = 32;
 
 export const ERROR_CODES = Object.freeze({
   NETWORK: "NETWORK",
@@ -161,4 +163,66 @@ export function clearDiscovery(state) {
 
 export function clearCell(state) {
   return { ...state, selectedIds: new Set() };
+}
+
+function memberIds(members) {
+  if (!Array.isArray(members)) {
+    fail(ERROR_CODES.INVALID_ARGUMENT, "Members must be an array.");
+  }
+  return new Set(members.map((member) => member.id));
+}
+
+export function serializeCell(selectedIds, members) {
+  assertSet(selectedIds, "Selected ids");
+  const knownIds = memberIds(members);
+  const ids = [];
+  for (const id of selectedIds) {
+    if (knownIds.has(id) && ids.length < MAX_CELL_SIZE) ids.push(id);
+  }
+  return `#cell=${ids.map((id) => encodeURIComponent(id)).join(",")}`;
+}
+
+export function restoreCell(fragment, members) {
+  const result = {
+    selectedIds: new Set(),
+    ignored: { unknown: 0, duplicate: 0, overflow: 0 },
+    hasCell: false,
+    invalid: false,
+  };
+  const knownIds = memberIds(members);
+  if (typeof fragment !== "string") {
+    result.invalid = true;
+    return result;
+  }
+  if (!fragment.startsWith("#cell=")) return result;
+  result.hasCell = true;
+  const rawValue = fragment.slice("#cell=".length);
+  if (fragment.length > MAX_FRAGMENT_LENGTH || rawValue.split(",").length > MAX_FRAGMENT_TOKENS) {
+    result.invalid = true;
+    return result;
+  }
+  const seen = new Set();
+  for (const rawId of rawValue.split(",")) {
+    if (rawId === "") continue;
+    let id;
+    try {
+      id = decodeURIComponent(rawId);
+    } catch {
+      result.invalid = true;
+      result.selectedIds = new Set();
+      return result;
+    }
+    if (seen.has(id)) result.ignored.duplicate += 1;
+    else if (!knownIds.has(id)) {
+      seen.add(id);
+      result.ignored.unknown += 1;
+    } else if (result.selectedIds.size >= MAX_CELL_SIZE) {
+      seen.add(id);
+      result.ignored.overflow += 1;
+    } else {
+      seen.add(id);
+      result.selectedIds.add(id);
+    }
+  }
+  return result;
 }

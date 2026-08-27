@@ -6,6 +6,8 @@ import {
   clearDiscovery,
   filterMembers,
   listExpertise,
+  restoreCell,
+  serializeCell,
   toggleSelection,
   validateTeam,
 } from "./domain.js";
@@ -14,12 +16,14 @@ const elements = {
   clearCell: document.querySelector("#clear-cell"),
   clearDiscovery: document.querySelector("#clear-discovery"),
   count: document.querySelector("#cell-count"),
+  copyCell: document.querySelector("#copy-cell"),
   filterOptions: document.querySelector("#filter-options"),
   filters: document.querySelector("#expertise-filters"),
   limitMessage: document.querySelector("#cell-limit-message"),
   results: document.querySelector("#result-summary"),
   search: document.querySelector("#team-search"),
   selected: document.querySelector("#selected-members"),
+  shareStatus: document.querySelector("#share-status"),
   team: document.querySelector("#team-region"),
 };
 
@@ -180,6 +184,7 @@ function renderSelection() {
     ? "Die Arbeitszelle ist voll. Entferne ein Mitglied, um jemand anderen hinzuzufügen."
     : "";
   elements.clearCell.disabled = selectedMembers.length === 0;
+  elements.copyCell.disabled = selectedMembers.length === 0;
   elements.selected.replaceChildren();
   if (selectedMembers.length === 0) {
     elements.selected.append(
@@ -205,6 +210,34 @@ function renderSelection() {
     list.append(item);
   }
   elements.selected.append(list);
+}
+
+function setShareStatus(message) {
+  elements.shareStatus.textContent = message;
+}
+
+function restoreSharedCell() {
+  const restored = restoreCell(window.location.hash, state.members);
+  if (!restored.hasCell) return;
+  state = { ...state, selectedIds: restored.selectedIds };
+  if (restored.invalid || restored.selectedIds.size === 0) {
+    setShareStatus("Arbeitszelle konnte nicht wiederhergestellt werden. Die Auswahl bleibt leer.");
+  } else if (restored.ignored.unknown || restored.ignored.duplicate || restored.ignored.overflow) {
+    setShareStatus(`Arbeitszelle mit ${restored.selectedIds.size} Mitgliedern wiederhergestellt. Unbekannte, doppelte oder weitere Einträge wurden ausgelassen.`);
+  } else {
+    setShareStatus(`Arbeitszelle mit ${restored.selectedIds.size} Mitgliedern wiederhergestellt.`);
+  }
+}
+
+async function copySharedCell() {
+  const url = new URL(window.location.href);
+  url.hash = serializeCell(state.selectedIds, state.members);
+  try {
+    await navigator.clipboard.writeText(url.href);
+    setShareStatus("Link zur Arbeitszelle kopiert.");
+  } catch {
+    setShareStatus("Link konnte nicht kopiert werden. Bitte kopiere ihn aus der Adresszeile.");
+  }
 }
 
 function render() {
@@ -285,6 +318,7 @@ async function loadTeam() {
       throw new AppError(ERROR_CODES.JSON, "Team JSON is invalid.", { cause: error });
     }
     state = { ...state, status: "ready", members: validateTeam(payload) };
+    restoreSharedCell();
   } catch (error) {
     state = { ...state, status: "error", error: toLoadError(error) };
   }
@@ -301,5 +335,6 @@ elements.clearCell.addEventListener("click", () => {
   state = clearCell(state);
   render();
 });
+elements.copyCell.addEventListener("click", copySharedCell);
 
 loadTeam();

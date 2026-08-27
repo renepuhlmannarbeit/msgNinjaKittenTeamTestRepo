@@ -11,6 +11,7 @@ zu vier Personen zusammenzustellen.
 - Filtert nach Fachgebieten: mehrere Fachgebiete gelten als ODER, Suche und Filter zusammen als UND.
 - Stellt eine Arbeitszelle mit höchstens vier eindeutigen Mitgliedern zusammen. Suche oder Filter ändern die Auswahl nicht.
 - Bietet getrennte Aktionen für das Zurücksetzen von Suche/Filtern und das Leeren der Arbeitszelle.
+- Teilt eine gefüllte Arbeitszelle als clientseitigen Fragment-Link (`#cell=id,…`) und stellt daraus bis zu vier bekannte, eindeutige Mitglieder wieder her.
 - Behandelt Lade-, leere Treffer- und Datenfehlerzustände verständlich.
 
 ## Architektur
@@ -45,6 +46,15 @@ Die Anwendung benötigt weder Framework noch Buildschritt noch externe Abhängig
 Die Anwendung validiert Anzahl, Typen, nichtleere getrimmte Texte, mindestens
 ein Fachgebiet sowie eindeutige IDs und Namen. Ungültige Daten werden
 vollständig abgewiesen und als verständlicher Fehlerzustand angezeigt.
+
+## Teilbare Arbeitszellen
+
+Der Teilen-Button erzeugt einen Link im Format `#cell=id1,id2`. Beim Laden werden
+nur bekannte IDs übernommen; Duplikate, unbekannte IDs und weitere gültige
+Einträge nach den ersten vier werden ausgelassen und einmalig angekündigt.
+Fragmente über 512 Zeichen oder mit mehr als 32 Tokens sowie fehlerhafte
+Prozentkodierung werden vollständig verworfen. Suche und Fachfilter sind
+absichtlich nicht Teil des Links.
 
 ## Voraussetzungen
 
