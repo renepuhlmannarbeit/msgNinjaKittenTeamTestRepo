@@ -88,8 +88,8 @@ Schreibwirkung abgewiesen.
 | `PUT /api/missions/:id` | `{mission, expectedRevision}`; abgeschlossene Akten unveränderlich |
 | `POST /api/missions/:id/status` | `{status, expectedRevision}`; nur `draft→ready→completed` |
 | `GET /api/missions-export` | kanonisch geordnetes Schema-v1-Dokument |
-| `POST /api/missions-restore/preview` | validiert ohne Mutation und liefert Digest sowie Revisionen |
-| `POST /api/missions-restore/apply` | `{document, expectedStoreRevision, digest}`; Vorschau und Bestand müssen unverändert sein |
+| `POST /api/missions-restore/preview` | validiert ohne Mutation und liefert Einmal-Token, Digest sowie Revisionen |
+| `POST /api/missions-restore/apply` | `{previewToken, expectedStoreRevision}`; Vorschau und Bestand müssen unverändert sein |
 
 Fehler haben die Form `{ "error": { "code", "message", "details"? } }`.
 `REVISION_CONFLICT` und `PREVIEW_MISMATCH` sind HTTP 409, Vertrags- und

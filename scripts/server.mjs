@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { MissionStore } from "../src/mission-store.js";
-import { MAX_DOCUMENT_BYTES, MissionError } from "../src/missions.js";
+import { canonicalDocument, MissionError } from "../src/missions.js";
 import { validateTeam } from "../src/domain.js";
 
 const HOST = "127.0.0.1";
@@ -43,13 +43,12 @@ async function api(request, response, pathname, store) {
     if (request.method === "PUT" && !match[2]) { const body = await jsonBody(request); send(response, 200, { mission: await store.update(id, body.mission, body.expectedRevision) }); return true; }
     if (request.method === "POST" && match[2] === "status") { const body = await jsonBody(request); send(response, 200, { mission: await store.transition(id, body.status, body.expectedRevision) }); return true; }
   }
-  if (request.method === "GET" && pathname === "/api/missions-export") { send(response, 200, store.snapshot()); return true; }
+  if (request.method === "GET" && pathname === "/api/missions-export") { send(response, 200, canonicalDocument(store.snapshot()), "application/json; charset=utf-8"); return true; }
   if (request.method === "POST" && pathname === "/api/missions-restore/preview") {
-    const raw = await jsonBody(request); if (Buffer.byteLength(JSON.stringify(raw)) > MAX_DOCUMENT_BYTES) throw new MissionError("LIMIT_EXCEEDED", "Restore document is too large.");
-    send(response, 200, { preview: store.preview(raw) }); return true;
+    send(response, 200, { preview: store.preview(await jsonBody(request)) }); return true;
   }
   if (request.method === "POST" && pathname === "/api/missions-restore/apply") {
-    const body = await jsonBody(request); send(response, 200, { document: await store.restore(body.document, body.expectedStoreRevision, body.digest) }); return true;
+    const body = await jsonBody(request); send(response, 200, { document: await store.restore(body.previewToken, body.expectedStoreRevision) }); return true;
   }
   return false;
 }

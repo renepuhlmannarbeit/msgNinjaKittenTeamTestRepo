@@ -140,7 +140,12 @@ export function validateDocument(raw, knownIds) {
     if (!MISSION_STATUSES.includes(mission.status)) fail("INVALID_DATA", "Mission status is invalid.");
     return Object.freeze({ id, ...fields, status: mission.status, revision: positiveInteger(mission.revision, "Mission revision"), createdAt: isoDate(mission.createdAt, "createdAt"), updatedAt: isoDate(mission.updatedAt, "updatedAt") });
   });
-  return Object.freeze({ schemaVersion: MISSION_SCHEMA_VERSION, storeRevision: document.storeRevision, missions: Object.freeze(missions) });
+  missions.sort((left, right) => left.id.localeCompare(right.id));
+  const validated = Object.freeze({ schemaVersion: MISSION_SCHEMA_VERSION, storeRevision: document.storeRevision, missions: Object.freeze(missions) });
+  if (Buffer.byteLength(canonicalDocument(validated), "utf8") > MAX_DOCUMENT_BYTES) {
+    fail("LIMIT_EXCEEDED", `Mission document exceeds ${MAX_DOCUMENT_BYTES} bytes.`);
+  }
+  return validated;
 }
 
 export function canonicalDocument(document) {
