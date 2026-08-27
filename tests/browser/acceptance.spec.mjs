@@ -34,6 +34,7 @@ test("Teilen meldet Erfolg und Clipboard-Fehler zugänglich", async ({ page }) =
   await expect(page.locator("#share-status")).toHaveText(
     "Link konnte nicht kopiert werden. Bitte kopiere ihn aus der Adresszeile.",
   );
+  await expect(page).toHaveURL(/#cell=powni,architorti$/);
 });
 
 test("Tastatur, Live-Status und 320px-Viewport bleiben verwendbar", async ({

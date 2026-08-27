@@ -232,6 +232,7 @@ function restoreSharedCell() {
 async function copySharedCell() {
   const url = new URL(window.location.href);
   url.hash = serializeCell(state.selectedIds, state.members);
+  window.location.hash = url.hash;
   try {
     await navigator.clipboard.writeText(url.href);
     setShareStatus("Link zur Arbeitszelle kopiert.");
