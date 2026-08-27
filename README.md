@@ -48,6 +48,63 @@ Die Anwendung validiert Anzahl, Typen, nichtleere getrimmte Texte, mindestens
 ein Fachgebiet sowie eindeutige IDs und Namen. Ungültige Daten werden
 vollständig abgewiesen und als verständlicher Fehlerzustand angezeigt.
 
+### Missionsakte: Schema v1 und API-Vertrag
+
+Der lokale Server persistiert Missionsakten standardmäßig in
+`var/missions.json`; `MISSIONS_FILE` kann für Tests und Sicherungen einen
+anderen Pfad setzen. Das Dokument hat exakt diese Hülle:
+
+```json
+{
+  "schemaVersion": 1,
+  "storeRevision": 3,
+  "missions": [{
+    "id": "opake-zufaellige-id",
+    "title": "Titel",
+    "outcome": "Gewünschtes Ergebnis",
+    "constraints": "Randbedingungen",
+    "criteria": ["Prüfbares Kriterium"],
+    "agentIds": ["backendi"],
+    "status": "draft",
+    "revision": 1,
+    "createdAt": "2026-08-27T00:00:00.000Z",
+    "updatedAt": "2026-08-27T00:00:00.000Z"
+  }]
+}
+```
+
+V1 akzeptiert nur exakt bekannte Felder und ausschließlich IDs aus
+`data/team.json`. Grenzen: 100 Akten, 1–4 eindeutige Agenten, 1–5 Kriterien,
+Titel 120, Ergebnis 2.000, Randbedingungen 4.000 und je Kriterium 500 Zeichen;
+Request und Restore-Dokument sind auf 128 KiB begrenzt. Es gibt in V1 keine
+ältere unterstützte Version zu migrieren. Versionen kleiner als 1 sind
+ungültig, Versionen größer als 1 werden mit `UNSUPPORTED_VERSION` ohne
+Schreibwirkung abgewiesen.
+
+| Methode und Pfad | Vertrag |
+| --- | --- |
+| `POST /api/missions` | Eingabefelder der Akte; erzeugt `draft`, Revision 1 und opake ID |
+| `GET /api/missions/:id` | liefert eine Akte oder `NOT_FOUND` |
+| `PUT /api/missions/:id` | `{mission, expectedRevision}`; abgeschlossene Akten unveränderlich |
+| `POST /api/missions/:id/status` | `{status, expectedRevision}`; nur `draft→ready→completed` |
+| `GET /api/missions-export` | kanonisch geordnetes Schema-v1-Dokument |
+| `POST /api/missions-restore/preview` | validiert ohne Mutation und liefert Digest sowie Revisionen |
+| `POST /api/missions-restore/apply` | `{document, expectedStoreRevision, digest}`; Vorschau und Bestand müssen unverändert sein |
+
+Fehler haben die Form `{ "error": { "code", "message", "details"? } }`.
+`REVISION_CONFLICT` und `PREVIEW_MISMATCH` sind HTTP 409, Vertrags- und
+Statusfehler 422, Größenfehler 413, ungültiges JSON 400 und fehlende Akten
+404. Mutationen laufen in einer Prozesswarteschlange. Der Store schreibt eine
+Datei mit Modus 0600, synchronisiert sie, verschiebt den gültigen Bestand an
+einen eindeutigen Rückkehrpfad, benennt die neue Datei atomar um, liest und
+validiert sie erneut und synchronisiert das Verzeichnis. Bei jedem Fehler wird
+der Rückkehrpfad wiederhergestellt; erst nach erfolgreicher Nachprüfung wird er
+entfernt. Damit gibt es innerhalb des bewusst einzelnen lokalen Prozesses kein
+stilles Überschreiben und keinen teilweise sichtbaren Restore.
+Schreibende Endpunkte verlangen `Content-Type: application/json`; dadurch
+werden einfache browserseitige Cross-Origin-Requests vor einer Mutation
+abgewiesen. Der Server bleibt zusätzlich ausschließlich an Loopback gebunden.
+
 ## Teilbare Arbeitszellen
 
 Der Teilen-Button erzeugt einen Link im Format `#cell=id1,id2`. Beim Laden werden
