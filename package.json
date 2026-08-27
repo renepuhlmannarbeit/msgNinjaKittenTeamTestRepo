@@ -6,7 +6,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node scripts/server.mjs",
-    "check": "node --check src/domain.js && node --check src/app.js && node --check scripts/server.mjs",
+    "check": "node --check src/domain.js && node --check src/missions.js && node --check src/mission-store.js && node --check src/app.js && node --check scripts/server.mjs",
     "test": "node --test",
     "test:browser": "playwright test"
   },
