@@ -25,6 +25,16 @@ const elements = {
   selected: document.querySelector("#selected-members"),
   shareStatus: document.querySelector("#share-status"),
   team: document.querySelector("#team-region"),
+  createMission: document.querySelector("#create-mission"),
+  missionHint: document.querySelector("#mission-cell-hint"),
+  missionRegion: document.querySelector("#mission-region"),
+  missionView: document.querySelector("#mission-view"),
+  missionError: document.querySelector("#mission-error"),
+  missionAnnouncer: document.querySelector("#mission-announcer"),
+  exportMissions: document.querySelector("#export-missions"),
+  restoreFile: document.querySelector("#restore-file"),
+  previewRestore: document.querySelector("#preview-restore"),
+  restorePreview: document.querySelector("#restore-preview"),
 };
 
 let state = {
@@ -36,6 +46,154 @@ let state = {
   error: null,
 };
 let locallySharedHash = null;
+let missionState = { status: "board", mission: null, draft: null, preview: null };
+
+const statusLabels = { draft: "Entwurf", ready: "Bereit", completed: "Abgeschlossen" };
+
+async function apiRequest(path, options = {}) {
+  let response;
+  try { response = await fetch(path, options); }
+  catch { throw { code: "NETWORK", message: "Netzwerkfehler" }; }
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json") ? await response.json().catch(() => ({})) : await response.text();
+  if (!response.ok) throw { status: response.status, ...(payload?.error || {}), message: payload?.error?.message || "Anfrage fehlgeschlagen" };
+  return payload;
+}
+
+function missionInput(mission = {}) {
+  return { title: mission.title || "", outcome: mission.outcome || "", constraints: mission.constraints || "", criteria: [...(mission.criteria || [""])], agentIds: [...(mission.agentIds || state.selectedIds)] };
+}
+
+function setMissionMessage(message, error = false) {
+  elements.missionAnnouncer.textContent = error ? "" : message;
+  elements.missionError.hidden = !error;
+  elements.missionError.textContent = error ? message : "";
+}
+
+function field(labelText, id, value, tag = "input") {
+  const wrapper = document.createElement("div"); wrapper.className = "mission-field";
+  const label = document.createElement("label"); label.htmlFor = id; label.textContent = labelText;
+  const input = document.createElement(tag); input.id = id; input.name = id; input.value = value; if (tag === "input") input.type = "text";
+  wrapper.append(label, input); return { wrapper, input };
+}
+
+function renderMissionForm(input, mission = null) {
+  missionState.draft = input;
+  const form = document.createElement("form"); form.id = "mission-form"; form.className = "mission-form"; form.noValidate = true;
+  const heading = text("h3", mission ? "Missionsakte bearbeiten" : "Neue Missionsakte"); heading.tabIndex = -1;
+  const summary = document.createElement("div"); summary.id = "mission-validation-summary"; summary.className = "validation-summary"; summary.tabIndex = -1; summary.hidden = true;
+  const titleField = field("Titel", "mission-title-input", input.title);
+  const outcomeField = field("Gewünschtes Ergebnis", "mission-outcome", input.outcome, "textarea");
+  const constraintsField = field("Randbedingungen", "mission-constraints", input.constraints, "textarea");
+  const criteria = document.createElement("fieldset"); criteria.id = "mission-criteria";
+  criteria.append(text("legend", "Überprüfbare Akzeptanzkriterien"));
+  const criteriaList = document.createElement("div"); criteriaList.className = "criteria-list";
+  function drawCriteria(focusIndex) {
+    criteriaList.replaceChildren();
+    input.criteria.forEach((value, index) => {
+      const row = document.createElement("div"); row.className = "criteria-field";
+      const item = field(`Kriterium ${index + 1}`, `mission-criterion-${index}`, value);
+      item.input.addEventListener("input", () => { input.criteria[index] = item.input.value; });
+      row.append(item.wrapper);
+      if (input.criteria.length > 1) { const remove = createButton(`Kriterium ${index + 1} entfernen`, "button button--text"); remove.addEventListener("click", () => { input.criteria.splice(index, 1); drawCriteria(Math.max(0, index - 1)); }); row.append(remove); }
+      criteriaList.append(row);
+    });
+    add.disabled = input.criteria.length >= 5;
+    if (focusIndex !== undefined) document.querySelector(`#mission-criterion-${focusIndex}`)?.focus();
+  }
+  const add = createButton("Kriterium hinzufügen", "button button--secondary"); add.addEventListener("click", () => { if (input.criteria.length < 5) { input.criteria.push(""); drawCriteria(input.criteria.length - 1); } });
+  criteria.append(criteriaList, add); drawCriteria();
+  for (const { input: control } of [titleField, outcomeField, constraintsField]) control.addEventListener("input", () => { input[control.id === "mission-title-input" ? "title" : control.id.replace("mission-", "")] = control.value; });
+  const save = document.createElement("button"); save.className = "button"; save.type = "submit"; save.textContent = mission ? "Missionsakte speichern" : "Missionsakte anlegen";
+  form.append(heading, summary, titleField.wrapper, outcomeField.wrapper, constraintsField.wrapper, criteria, save);
+  form.addEventListener("submit", async (event) => { event.preventDefault(); await saveMission(form, summary, input, mission); });
+  elements.missionView.replaceChildren(form); heading.focus();
+}
+
+function validateDraft(input, form, summary) {
+  form.querySelectorAll("[aria-invalid]").forEach((node) => node.removeAttribute("aria-invalid"));
+  const invalid = [];
+  [["mission-title-input", input.title], ["mission-outcome", input.outcome], ["mission-constraints", input.constraints], ...input.criteria.map((value, index) => [`mission-criterion-${index}`, value])].forEach(([id, value]) => { if (!value.trim()) { form.querySelector(`#${id}`)?.setAttribute("aria-invalid", "true"); invalid.push(id); } });
+  summary.hidden = invalid.length === 0; summary.textContent = invalid.length ? "Bitte korrigiere die markierten Angaben. Alle Felder und Kriterien sind erforderlich." : "";
+  if (invalid.length) summary.focus(); return invalid.length === 0;
+}
+
+async function saveMission(form, summary, input, mission) {
+  if (!validateDraft(input, form, summary)) return;
+  missionState.status = "saving"; setMissionMessage("Missionsakte wird gespeichert …");
+  try {
+    const payload = mission
+      ? await apiRequest(`/api/missions/${encodeURIComponent(mission.id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mission: input, expectedRevision: mission.revision }) })
+      : await apiRequest("/api/missions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+    missionState = { ...missionState, status: "detail", mission: payload.mission, draft: null };
+    window.location.hash = `mission=${encodeURIComponent(payload.mission.id)}`; renderMissionDetail(payload.mission); setMissionMessage("Missionsakte gespeichert.");
+  } catch (error) {
+    missionState.status = error.code === "REVISION_CONFLICT" ? "conflict" : "editing";
+    const message = error.code === "REVISION_CONFLICT" ? "Nicht gespeichert: Die Akte wurde inzwischen geändert. Deine Eingaben bleiben erhalten. Lade die Akte neu, um zu vergleichen." : error.status === 413 ? "Die Eingabe ist zu groß und wurde nicht gespeichert." : "Die Änderung konnte nicht gespeichert werden. Deine Eingaben bleiben erhalten; bitte versuche es erneut.";
+    setMissionMessage(message, true); form.querySelector("button[type=submit]")?.focus();
+  }
+}
+
+function renderMissionDetail(mission) {
+  const box = document.createElement("article"); box.className = "mission-detail";
+  const heading = text("h3", mission.title); heading.id = "mission-title"; heading.tabIndex = -1;
+  const agents = mission.agentIds.map((id) => state.members.find((member) => member.id === id)?.name || id);
+  const list = document.createElement("ol"); mission.criteria.forEach((item) => list.append(text("li", item)));
+  box.append(heading, text("p", `Status: ${statusLabels[mission.status]}`, "mission-status"), text("p", `Version ${mission.revision}`, "mission-meta"), text("h4", "Gewünschtes Ergebnis"), text("p", mission.outcome), text("h4", "Arbeitszelle"), text("p", agents.join(", ")), text("h4", "Akzeptanzkriterien"), list, text("h4", "Randbedingungen"), text("p", mission.constraints));
+  const actions = document.createElement("div"); actions.className = "mission-actions";
+  if (mission.status !== "completed") { const edit = createButton("Missionsakte bearbeiten"); edit.addEventListener("click", () => renderMissionForm(missionInput(mission), mission)); actions.append(edit); const next = mission.status === "draft" ? "ready" : "completed"; const transition = createButton(next === "ready" ? "Als bereit markieren" : "Als abgeschlossen markieren", "button button--secondary"); transition.addEventListener("click", () => transitionMission(mission, next)); actions.append(transition); }
+  const board = createButton("Zum Board", "button button--text"); board.addEventListener("click", () => { history.pushState(null, "", location.pathname + location.search); missionState = { status: "board", mission: null, draft: null, preview: missionState.preview }; renderMissionIdle(); }); actions.append(board);
+  box.append(actions); elements.missionView.replaceChildren(box); heading.focus();
+}
+
+async function transitionMission(mission, status) {
+  try { const payload = await apiRequest(`/api/missions/${encodeURIComponent(mission.id)}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, expectedRevision: mission.revision }) }); missionState.mission = payload.mission; renderMissionDetail(payload.mission); setMissionMessage(`Status: ${statusLabels[status]}.`); }
+  catch (error) { setMissionMessage(error.code === "REVISION_CONFLICT" ? "Status nicht geändert: Die Akte wurde inzwischen geändert. Bitte lade sie neu." : "Der Status konnte nicht geändert werden.", true); }
+}
+
+function renderMissionIdle(message = "Öffne aus einer Arbeitszelle eine neue Missionsakte oder rufe einen #mission=…-Link auf.") { elements.missionView.replaceChildren(text("p", message, "status-card")); setMissionMessage(""); }
+
+async function loadMissionFromHash() {
+  const match = location.hash.match(/^#mission=(.+)$/); if (!match) return false;
+  let id; try { id = decodeURIComponent(match[1]); } catch { id = ""; }
+  if (!id) { renderMissionIdle("Diese Missionsakte wurde nicht gefunden. Kehre zum Board zurück."); return true; }
+  missionState.status = "loading"; elements.missionRegion.setAttribute("aria-busy", "true"); renderMissionIdle("Missionsakte wird geladen …");
+  try { const payload = await apiRequest(`/api/missions/${encodeURIComponent(id)}`); missionState = { ...missionState, status: "detail", mission: payload.mission }; renderMissionDetail(payload.mission); }
+  catch (error) { missionState.status = error.status === 404 ? "notFound" : "error"; renderMissionIdle(error.status === 404 ? "Diese Missionsakte wurde nicht gefunden. Die Arbeitszelle bleibt erhalten." : "Die Missionsakte konnte nicht geladen werden. Bitte versuche es erneut."); }
+  finally { elements.missionRegion.setAttribute("aria-busy", "false"); }
+  return true;
+}
+
+async function exportMissions() {
+  try { const response = await fetch("/api/missions-export"); if (!response.ok) throw new Error(); const blob = await response.blob(); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "missions-v1.json"; link.click(); URL.revokeObjectURL(link.href); setMissionMessage("Missionsakten exportiert."); }
+  catch { setMissionMessage("Missionsakten konnten nicht exportiert werden.", true); }
+}
+
+function restoreError(error) {
+  if (error.status === 413 || error.code === "LIMIT_EXCEEDED" || error.code === "REQUEST_TOO_LARGE") return "Die Datei ist zu groß und wurde nicht übernommen.";
+  if (error.status === 415) return "Es wird eine JSON-Datei benötigt.";
+  if (error.code === "UNSUPPORTED_VERSION") return "Die Sicherung verwendet eine nicht unterstützte neuere Version. Nichts wurde geändert.";
+  if (["INVALID_JSON", "INVALID_DATA"].includes(error.code)) return "Die Sicherung ist ungültig. Nichts wurde geändert.";
+  if (error.status === 409) return "Die Vorschau ist nicht mehr aktuell. Erstelle eine neue Vorschau.";
+  return "Wiederherstellung nicht erfolgt; der vorherige Stand bleibt erhalten.";
+}
+
+async function previewRestore() {
+  const file = elements.restoreFile.files[0]; if (!file) { setMissionMessage("Wähle zuerst eine JSON-Sicherung aus.", true); elements.restoreFile.focus(); return; }
+  if (file.size > 128 * 1024) { setMissionMessage("Die Datei ist zu groß und wurde nicht übernommen.", true); elements.restoreFile.focus(); return; }
+  try {
+    const raw = await file.text(); let document; try { document = JSON.parse(raw); } catch { throw { code: "INVALID_JSON" }; }
+    const payload = await apiRequest("/api/missions-restore/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(document) });
+    missionState.preview = payload.preview; const preview = payload.preview; elements.restorePreview.replaceChildren(text("h3", "Vorschau bereit"), text("p", `Schema-Version ${preview.schemaVersion}; ${preview.missionCount} Akten; Digest ${preview.digest}; aktuelle Store-Version ${preview.currentStoreRevision}.`));
+    const apply = createButton("Geprüfte Sicherung wiederherstellen"); apply.id = "apply-restore"; apply.addEventListener("click", applyRestore); elements.restorePreview.append(apply); apply.focus();
+  } catch (error) { missionState.preview = null; elements.restorePreview.replaceChildren(); setMissionMessage(restoreError(error), true); elements.restoreFile.focus(); }
+}
+
+async function applyRestore() {
+  const preview = missionState.preview; if (!preview) return;
+  try { await apiRequest("/api/missions-restore/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ previewToken: preview.previewToken, expectedStoreRevision: preview.currentStoreRevision }) }); missionState.preview = null; elements.restorePreview.replaceChildren(); if (!(await loadMissionFromHash())) renderMissionIdle("Sicherung wiederhergestellt. Öffne eine Missionsakte aus dem Board."); setMissionMessage("Sicherung wiederhergestellt."); }
+  catch (error) { setMissionMessage(restoreError(error), true); elements.previewRestore.focus(); }
+}
 
 function text(tag, value, className) {
   const node = document.createElement(tag);
@@ -186,6 +344,10 @@ function renderSelection() {
     : "";
   elements.clearCell.disabled = selectedMembers.length === 0;
   elements.copyCell.disabled = selectedMembers.length === 0;
+  elements.createMission.disabled = selectedMembers.length === 0;
+  elements.missionHint.textContent = selectedMembers.length === 0
+    ? "Wähle 1 bis 4 Teammitglieder, um eine Missionsakte zu erstellen."
+    : `Missionsakte für ${selectedMembers.length} gewählte Teammitglieder erstellen.`;
   elements.selected.replaceChildren();
   if (selectedMembers.length === 0) {
     elements.selected.append(
@@ -327,7 +489,7 @@ async function loadTeam() {
       throw new AppError(ERROR_CODES.JSON, "Team JSON is invalid.", { cause: error });
     }
     state = { ...state, status: "ready", members: validateTeam(payload) };
-    restoreSharedCell();
+    if (!(await loadMissionFromHash())) restoreSharedCell();
   } catch (error) {
     state = { ...state, status: "error", error: toLoadError(error) };
   }
@@ -345,8 +507,21 @@ elements.clearCell.addEventListener("click", () => {
   render();
 });
 elements.copyCell.addEventListener("click", copySharedCell);
+elements.createMission.addEventListener("click", () => {
+  if (state.selectedIds.size < 1) return;
+  missionState = { ...missionState, status: "editing", mission: null };
+  renderMissionForm(missionInput());
+  elements.missionRegion.scrollIntoView({ block: "start" });
+});
+elements.exportMissions.addEventListener("click", exportMissions);
+elements.previewRestore.addEventListener("click", previewRestore);
 window.addEventListener("hashchange", () => {
   if (state.status !== "ready") return;
+  if (window.location.hash.startsWith("#mission=")) {
+    locallySharedHash = null;
+    loadMissionFromHash();
+    return;
+  }
   if (window.location.hash === locallySharedHash) {
     locallySharedHash = null;
     return;
