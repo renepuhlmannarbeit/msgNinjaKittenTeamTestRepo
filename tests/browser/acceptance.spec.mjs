@@ -11,6 +11,32 @@ test("Fragment-Link stellt eine Arbeitszelle wieder her und meldet Bereinigung",
   await expect(page.getByRole("button", { name: "Arbeitszelle teilen" })).toBeEnabled();
 });
 
+test("Fragment-Navigation stellt Arbeitszellen wieder her und entfernt sie", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Arbeitszelle teilen" }).click();
+  await expect(page).toHaveURL(/#cell=powni$/);
+
+  await page.evaluate(() => {
+    window.location.hash = "#cell=backendi,testihesti";
+  });
+  await expect(page.locator("#cell-count")).toHaveText("2 von 4 gewählt");
+  await expect(page.locator("#selected-members")).toContainText("Backendi");
+  await expect(page.locator("#selected-members")).toContainText("TestiHesti");
+
+  await page.goBack();
+  await expect(page).toHaveURL(/#cell=powni$/);
+  await expect(page.locator("#cell-count")).toHaveText("1 von 4 gewählt");
+  await expect(page.locator("#selected-members")).toContainText("POwni");
+
+  await page.goBack();
+  await expect(page).not.toHaveURL(/#cell=/);
+  await expect(page.locator("#cell-count")).toHaveText("0 von 4 gewählt");
+  await expect(page.locator("#share-status")).toHaveText(
+    "Geteilte Arbeitszelle aus der Navigation entfernt.",
+  );
+});
+
 test("Teilen meldet Erfolg und Clipboard-Fehler zugänglich", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();

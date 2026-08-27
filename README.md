@@ -12,6 +12,7 @@ zu vier Personen zusammenzustellen.
 - Stellt eine Arbeitszelle mit höchstens vier eindeutigen Mitgliedern zusammen. Suche oder Filter ändern die Auswahl nicht.
 - Bietet getrennte Aktionen für das Zurücksetzen von Suche/Filtern und das Leeren der Arbeitszelle.
 - Teilt eine gefüllte Arbeitszelle als clientseitigen Fragment-Link (`#cell=id,…`) und stellt daraus bis zu vier bekannte, eindeutige Mitglieder wieder her.
+- Hält die wiederhergestellte Arbeitszelle bei Fragment-Navigation mit Browser-Zurück und -Vorwärts synchron.
 - Behandelt Lade-, leere Treffer- und Datenfehlerzustände verständlich.
 
 ## Architektur
