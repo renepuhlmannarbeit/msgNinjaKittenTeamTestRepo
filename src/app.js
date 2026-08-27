@@ -35,6 +35,7 @@ let state = {
   selectedIds: new Set(),
   error: null,
 };
+let locallySharedHash = null;
 
 function text(tag, value, className) {
   const node = document.createElement(tag);
@@ -216,9 +217,15 @@ function setShareStatus(message) {
   elements.shareStatus.textContent = message;
 }
 
-function restoreSharedCell() {
+function restoreSharedCell({ clearMissing = false } = {}) {
   const restored = restoreCell(window.location.hash, state.members);
-  if (!restored.hasCell) return;
+  if (!restored.hasCell) {
+    if (clearMissing) {
+      state = { ...state, selectedIds: new Set() };
+      setShareStatus("Geteilte Arbeitszelle aus der Navigation entfernt.");
+    }
+    return;
+  }
   state = { ...state, selectedIds: restored.selectedIds };
   if (restored.invalid || restored.selectedIds.size === 0) {
     setShareStatus("Arbeitszelle konnte nicht wiederhergestellt werden. Die Auswahl bleibt leer.");
@@ -232,6 +239,7 @@ function restoreSharedCell() {
 async function copySharedCell() {
   const url = new URL(window.location.href);
   url.hash = serializeCell(state.selectedIds, state.members);
+  if (window.location.hash !== url.hash) locallySharedHash = url.hash;
   window.location.hash = url.hash;
   try {
     await navigator.clipboard.writeText(url.href);
@@ -337,5 +345,15 @@ elements.clearCell.addEventListener("click", () => {
   render();
 });
 elements.copyCell.addEventListener("click", copySharedCell);
+window.addEventListener("hashchange", () => {
+  if (state.status !== "ready") return;
+  if (window.location.hash === locallySharedHash) {
+    locallySharedHash = null;
+    return;
+  }
+  locallySharedHash = null;
+  restoreSharedCell({ clearMissing: true });
+  render();
+});
 
 loadTeam();
