@@ -46,7 +46,7 @@ let state = {
   error: null,
 };
 let locallySharedHash = null;
-let missionState = { status: "board", mission: null, draft: null, preview: null };
+let missionState = { status: "board", mission: null, draft: null, preview: null, missions: [], query: "", statuses: new Set(["draft", "ready", "completed"]) };
 
 const statusLabels = { draft: "Entwurf", ready: "Bereit", completed: "Abgeschlossen" };
 
@@ -142,7 +142,7 @@ function renderMissionDetail(mission) {
   box.append(heading, text("p", `Status: ${statusLabels[mission.status]}`, "mission-status"), text("p", `Version ${mission.revision}`, "mission-meta"), text("h4", "Gewünschtes Ergebnis"), text("p", mission.outcome), text("h4", "Arbeitszelle"), text("p", agents.join(", ")), text("h4", "Akzeptanzkriterien"), list, text("h4", "Randbedingungen"), text("p", mission.constraints));
   const actions = document.createElement("div"); actions.className = "mission-actions";
   if (mission.status !== "completed") { const edit = createButton("Missionsakte bearbeiten"); edit.addEventListener("click", () => renderMissionForm(missionInput(mission), mission)); actions.append(edit); const next = mission.status === "draft" ? "ready" : "completed"; const transition = createButton(next === "ready" ? "Als bereit markieren" : "Als abgeschlossen markieren", "button button--secondary"); transition.addEventListener("click", () => transitionMission(mission, next)); actions.append(transition); }
-  const board = createButton("Zum Board", "button button--text"); board.addEventListener("click", () => { history.pushState(null, "", location.pathname + location.search); missionState = { status: "board", mission: null, draft: null, preview: missionState.preview }; renderMissionIdle(); }); actions.append(board);
+  const board = createButton("Zur Missionsübersicht", "button button--text"); board.addEventListener("click", () => { history.pushState(null, "", location.pathname + location.search); missionState = { ...missionState, status: "board", mission: null, draft: null }; renderMissionOverview({ focus: true }); }); actions.append(board);
   box.append(actions); elements.missionView.replaceChildren(box); heading.focus();
 }
 
@@ -151,7 +151,70 @@ async function transitionMission(mission, status) {
   catch (error) { setMissionMessage(error.code === "REVISION_CONFLICT" ? "Status nicht geändert: Die Akte wurde inzwischen geändert. Bitte lade sie neu." : "Der Status konnte nicht geändert werden.", true); }
 }
 
-function renderMissionIdle(message = "Öffne aus einer Arbeitszelle eine neue Missionsakte oder rufe einen #mission=…-Link auf.") { elements.missionView.replaceChildren(text("p", message, "status-card")); setMissionMessage(""); }
+function normalizedMissionQuery(value) {
+  return value.trim().toLocaleLowerCase("de").normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+
+function filteredMissions() {
+  const query = normalizedMissionQuery(missionState.query);
+  return missionState.missions.filter((mission) => {
+    const haystack = normalizedMissionQuery(`${mission.title} ${mission.outcome}`);
+    return missionState.statuses.has(mission.status) && (!query || haystack.includes(query));
+  });
+}
+
+function drawMissionOverview({ focus = false } = {}) {
+  const section = document.createElement("section"); section.className = "mission-overview"; section.setAttribute("aria-labelledby", "mission-overview-title");
+  const heading = text("h3", "Missionsübersicht"); heading.id = "mission-overview-title"; heading.tabIndex = -1;
+  const controls = document.createElement("div"); controls.className = "mission-overview__controls";
+  const searchField = field("Missionen durchsuchen", "mission-search", missionState.query); searchField.input.type = "search"; searchField.input.placeholder = "Titel oder Outcome";
+  searchField.input.addEventListener("input", () => { missionState.query = searchField.input.value; drawMissionOverview(); document.querySelector("#mission-search")?.focus(); });
+  const filters = document.createElement("fieldset"); filters.className = "filters"; filters.append(text("legend", "Status filtern"));
+  const options = document.createElement("div"); options.className = "filter-options";
+  for (const status of ["draft", "ready", "completed"]) {
+    const label = document.createElement("label"); label.className = "filter";
+    const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.value = status; checkbox.checked = missionState.statuses.has(status);
+    checkbox.addEventListener("change", () => { if (checkbox.checked) missionState.statuses.add(status); else missionState.statuses.delete(status); drawMissionOverview(); document.querySelector(`input[value="${status}"]`)?.focus(); });
+    label.append(checkbox, text("span", statusLabels[status])); options.append(label);
+  }
+  filters.append(options); controls.append(searchField.wrapper, filters);
+  const shown = filteredMissions();
+  const summary = text("p", `${shown.length} von ${missionState.missions.length} Missionen angezeigt`, "results-heading"); summary.id = "mission-list-summary"; summary.setAttribute("role", "status"); summary.setAttribute("aria-live", "polite");
+  const listRegion = document.createElement("div"); listRegion.id = "mission-list";
+  if (missionState.missions.length === 0) {
+    listRegion.append(text("p", "Noch keine Missionen vorhanden. Erstelle eine Missionsakte aus einer Arbeitszelle.", "status-card"));
+  } else if (shown.length === 0) {
+    const empty = text("p", "Keine Mission passt zu Suche und Statusfilter.", "status-card");
+    const reset = createButton("Missionsfilter zurücksetzen", "button button--secondary"); reset.addEventListener("click", () => { missionState.query = ""; missionState.statuses = new Set(["draft", "ready", "completed"]); drawMissionOverview({ focus: true }); });
+    listRegion.append(empty, reset);
+  } else {
+    const list = document.createElement("ul"); list.className = "mission-list";
+    for (const mission of shown) {
+      const item = document.createElement("li"); item.className = "mission-list__item";
+      const title = text("h4", mission.title); const outcome = text("p", mission.outcome);
+      const status = text("p", `Status: ${statusLabels[mission.status]}`, "mission-status");
+      const updated = text("p", `Aktualisiert: ${new Intl.DateTimeFormat("de", { dateStyle: "medium", timeStyle: "short" }).format(new Date(mission.updatedAt))}`, "mission-meta");
+      const open = createButton(`${mission.title} öffnen`, "button button--secondary"); open.addEventListener("click", () => { location.hash = `mission=${encodeURIComponent(mission.id)}`; });
+      item.append(title, outcome, status, updated, open); list.append(item);
+    }
+    listRegion.append(list);
+  }
+  section.append(heading, controls, summary, listRegion); elements.missionView.replaceChildren(section); setMissionMessage(""); if (focus) heading.focus();
+}
+
+async function renderMissionOverview({ focus = false } = {}) {
+  missionState.status = "loading"; elements.missionRegion.setAttribute("aria-busy", "true");
+  elements.missionView.replaceChildren(text("p", "Missionen werden geladen …", "status-card")); setMissionMessage("");
+  try {
+    const payload = await apiRequest("/api/missions"); missionState = { ...missionState, status: "board", missions: payload.missions }; drawMissionOverview({ focus });
+  } catch {
+    missionState.status = "error";
+    const card = document.createElement("section"); card.className = "status-card status-card--error"; const heading = text("h3", "Missionen konnten nicht geladen werden"); heading.tabIndex = -1;
+    const retry = createButton("Missionen erneut laden"); retry.addEventListener("click", () => renderMissionOverview({ focus: true })); card.append(heading, text("p", "Bitte versuche es erneut."), retry); elements.missionView.replaceChildren(card); setMissionMessage("Missionen konnten nicht geladen werden.", true); if (focus) heading.focus();
+  } finally { elements.missionRegion.setAttribute("aria-busy", "false"); }
+}
+
+function renderMissionIdle(message) { if (message) { elements.missionView.replaceChildren(text("p", message, "status-card")); setMissionMessage(""); } else renderMissionOverview(); }
 
 async function loadMissionFromHash() {
   const match = location.hash.match(/^#mission=(.+)$/); if (!match) return false;
@@ -191,7 +254,7 @@ async function previewRestore() {
 
 async function applyRestore() {
   const preview = missionState.preview; if (!preview) return;
-  try { await apiRequest("/api/missions-restore/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ previewToken: preview.previewToken, expectedStoreRevision: preview.currentStoreRevision }) }); missionState.preview = null; elements.restorePreview.replaceChildren(); if (!(await loadMissionFromHash())) renderMissionIdle("Sicherung wiederhergestellt. Öffne eine Missionsakte aus dem Board."); setMissionMessage("Sicherung wiederhergestellt."); }
+  try { await apiRequest("/api/missions-restore/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ previewToken: preview.previewToken, expectedStoreRevision: preview.currentStoreRevision }) }); missionState.preview = null; elements.restorePreview.replaceChildren(); if (!(await loadMissionFromHash())) await renderMissionOverview(); setMissionMessage("Sicherung wiederhergestellt."); }
   catch (error) { setMissionMessage(restoreError(error), true); elements.previewRestore.focus(); }
 }
 
@@ -489,7 +552,7 @@ async function loadTeam() {
       throw new AppError(ERROR_CODES.JSON, "Team JSON is invalid.", { cause: error });
     }
     state = { ...state, status: "ready", members: validateTeam(payload) };
-    if (!(await loadMissionFromHash())) restoreSharedCell();
+    if (!(await loadMissionFromHash())) { restoreSharedCell(); await renderMissionOverview(); }
   } catch (error) {
     state = { ...state, status: "error", error: toLoadError(error) };
   }
@@ -529,6 +592,7 @@ window.addEventListener("hashchange", () => {
   locallySharedHash = null;
   restoreSharedCell({ clearMissing: true });
   render();
+  renderMissionOverview();
 });
 
 loadTeam();

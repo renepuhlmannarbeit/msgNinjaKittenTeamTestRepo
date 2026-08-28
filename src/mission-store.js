@@ -34,6 +34,12 @@ export class MissionStore {
 
   snapshot() { return structuredClone(this.#document); }
 
+  list() {
+    return this.#document.missions
+      .map(({ id, title, outcome, status, updatedAt }) => ({ id, title, outcome, status, updatedAt }))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id));
+  }
+
   get(id) { return this.#document.missions.find((mission) => mission.id === id) ?? null; }
 
   create(input) {

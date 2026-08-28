@@ -114,6 +114,11 @@ test("lokale API liefert stabile Fehlercodes für Create, Get und Konflikt", asy
   const base = `http://127.0.0.1:${server.address().port}`;
   const createdResponse = await fetch(`${base}/api/missions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
   assert.equal(createdResponse.status, 201); const { mission } = await createdResponse.json();
+  const second = await (await fetch(`${base}/api/missions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...input, title: "Zweite Mission" }) })).json();
+  const listed = await (await fetch(`${base}/api/missions`)).json();
+  assert.deepEqual(listed.missions.map(({ id }) => id).sort(), [second.mission.id, mission.id].sort());
+  assert.ok(listed.missions[0].updatedAt >= listed.missions[1].updatedAt);
+  assert.deepEqual(Object.keys(listed.missions[0]).sort(), ["id", "outcome", "status", "title", "updatedAt"]);
   const loaded = await fetch(`${base}/api/missions/${mission.id}`); assert.equal(loaded.status, 200);
   const beforeRejectedRestore = await (await fetch(`${base}/api/missions-export`)).text();
   for (const [body, expectedStatus, expectedCode] of [
