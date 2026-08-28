@@ -209,6 +209,49 @@ test("Missionsübersicht zeigt Kitten und sucht gemeinsam nach Name, Rolle und S
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test("Mission wird erst nach bewusster Übernahme als neuer Entwurf angelegt", async ({ page }) => {
+  const marker = `Kopiervorlage-${Date.now()}`;
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+  await page.getByLabel("Titel").fill(marker);
+  await page.getByLabel("Gewünschtes Ergebnis").fill("Kopierbares Ergebnis");
+  await page.getByLabel("Randbedingungen").fill("Original unverändert lassen");
+  await page.getByLabel("Kriterium 1").fill("Erstes Kriterium");
+  await page.getByRole("button", { name: "Kriterium hinzufügen" }).click();
+  await page.getByLabel("Kriterium 2").fill("Zweites Kriterium");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await expect(page).toHaveURL(/#mission=[A-Za-z0-9_-]{16,64}$/);
+
+  const originalUrl = page.url();
+  const originalId = new URL(originalUrl).hash.replace("#mission=", "");
+  await page.getByRole("button", { name: "Als bereit markieren" }).click();
+  await page.getByRole("button", { name: "Als neuen Entwurf übernehmen" }).click();
+  await expect(page.getByRole("heading", { name: "Mission als neuen Entwurf übernehmen" })).toBeFocused();
+  await expect(page.getByLabel("Titel")).toHaveValue(marker);
+  await expect(page.getByLabel("Gewünschtes Ergebnis")).toHaveValue("Kopierbares Ergebnis");
+  await expect(page.getByLabel("Randbedingungen")).toHaveValue("Original unverändert lassen");
+  await expect(page.getByLabel("Kriterium 2")).toHaveValue("Zweites Kriterium");
+  await page.getByRole("button", { name: "Übernahme abbrechen" }).click();
+  await expect(page).toHaveURL(originalUrl);
+  await expect(page.getByText("Status: Bereit", { exact: true })).toBeVisible();
+  await expect(page.locator("#mission-announcer")).toHaveText("Übernahme abgebrochen. Die ursprüngliche Mission blieb unverändert.");
+
+  await page.getByRole("button", { name: "Als neuen Entwurf übernehmen" }).click();
+  await page.getByLabel("Titel").fill(`${marker} Kopie`);
+  await page.getByRole("button", { name: "Neuen Entwurf anlegen" }).click();
+  await expect.poll(() => new URL(page.url()).hash).not.toBe(`#mission=${originalId}`);
+  await expect(page).toHaveURL(/#mission=[A-Za-z0-9_-]{16,64}$/);
+  await expect(page.getByText("Status: Entwurf", { exact: true })).toBeVisible();
+  await expect(page.getByText("POwni, ArchiTorti", { exact: true })).toBeVisible();
+  await page.goto(originalUrl);
+  await expect(page.getByRole("heading", { name: marker })).toBeFocused();
+  await expect(page.getByText("Status: Bereit", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("Missionsübersicht erklärt leeren und fehlerhaften Listenabruf", async ({ page }) => {
   await page.route("**/api/missions", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ missions: [] }) }));
   await page.goto("/");
