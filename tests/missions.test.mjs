@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { MissionStore } from "../src/mission-store.js";
-import { MAX_DOCUMENT_BYTES, MissionError, canonicalDocument, createMission, transitionMission, updateMission, validateDocument } from "../src/missions.js";
+import { MAX_DOCUMENT_BYTES, MissionError, canonicalDocument, createMission, missionListItem, transitionMission, updateMission, validateDocument } from "../src/missions.js";
 import { createAppServer } from "../scripts/server.mjs";
 
 const knownIds = new Set(["backendi", "fronti", "testihesti", "devheavy"]);
@@ -52,6 +52,16 @@ test("Domänenvertrag validiert Agenten, Revisionen und vorwärtsgerichtete Stat
   const completed = transitionMission(ready, "completed", 2, completion);
   assert.deepEqual(completed.completion, completion);
   assert.throws(() => updateMission(completed, input, 3, knownIds), code("INVALID_TRANSITION"));
+});
+
+test("Listenvertrag ergänzt zugeordnete Kitten aus dem Teamverzeichnis", () => {
+  const mission = createMission(input, knownIds, "2026-08-27T00:00:00.000Z", "abcdefghijklmnop");
+  const listed = missionListItem(mission, new Map([
+    ["backendi", { id: "backendi", name: "Backendi", role: "Backend-Entwicklung" }],
+  ]));
+  assert.deepEqual(listed.agents, [{ id: "backendi", name: "Backendi", role: "Backend-Entwicklung" }]);
+  assert.equal("agentIds" in listed, false);
+  assert.throws(() => missionListItem(mission, new Map()), code("UNKNOWN_AGENT"));
 });
 
 test("Schema v1 migriert verlustfrei; Schema v2 validiert Abschlussangaben und neuere Versionen", () => {
@@ -127,7 +137,8 @@ test("lokale API liefert stabile Fehlercodes für Create, Get und Konflikt", asy
   const listed = await (await fetch(`${base}/api/missions`)).json();
   assert.deepEqual(listed.missions.map(({ id }) => id).sort(), [second.mission.id, mission.id].sort());
   assert.ok(listed.missions[0].updatedAt >= listed.missions[1].updatedAt);
-  assert.deepEqual(Object.keys(listed.missions[0]).sort(), ["id", "outcome", "status", "title", "updatedAt"]);
+  assert.deepEqual(Object.keys(listed.missions[0]).sort(), ["agents", "id", "outcome", "status", "title", "updatedAt"]);
+  assert.deepEqual(listed.missions[0].agents, [{ id: "backendi", name: "Backendi", role: "Backend-Entwicklung" }]);
   const loaded = await fetch(`${base}/api/missions/${mission.id}`); assert.equal(loaded.status, 200);
   const beforeRejectedRestore = await (await fetch(`${base}/api/missions-export`)).text();
   for (const [body, expectedStatus, expectedCode] of [

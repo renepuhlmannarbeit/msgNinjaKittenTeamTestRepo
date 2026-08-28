@@ -105,7 +105,7 @@ nichtleere Klartextreferenzen mit je höchstens 500 Zeichen erforderlich.
 
 | Methode und Pfad | Vertrag |
 | --- | --- |
-| `GET /api/missions` | liefert `{missions}` als Read-only-Kurzliste aus `id`, `title`, `outcome`, `status`, `updatedAt`, zuletzt aktualisiert zuerst |
+| `GET /api/missions` | liefert `{missions}` als Read-only-Kurzliste aus `id`, `title`, `outcome`, `status`, `updatedAt` und `agents: [{id, name, role}]`, zuletzt aktualisiert zuerst; Namen und Rollen werden zur Laufzeit ausschließlich aus `data/team.json` ergänzt |
 | `POST /api/missions` | Eingabefelder der Akte; erzeugt `draft`, Revision 1 und opake ID |
 | `GET /api/missions/:id` | liefert eine Akte oder `NOT_FOUND` |
 | `PUT /api/missions/:id` | `{mission, expectedRevision}`; abgeschlossene Akten unveränderlich |
