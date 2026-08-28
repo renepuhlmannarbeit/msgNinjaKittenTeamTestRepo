@@ -115,6 +115,18 @@ test("lokale API liefert stabile Fehlercodes für Create, Get und Konflikt", asy
   const createdResponse = await fetch(`${base}/api/missions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
   assert.equal(createdResponse.status, 201); const { mission } = await createdResponse.json();
   const loaded = await fetch(`${base}/api/missions/${mission.id}`); assert.equal(loaded.status, 200);
+  const beforeRejectedRestore = await (await fetch(`${base}/api/missions-export`)).text();
+  for (const [body, expectedStatus, expectedCode] of [
+    ["{", 400, "INVALID_JSON"],
+    [JSON.stringify({ schemaVersion: 2, storeRevision: 0, missions: [] }), 422, "UNSUPPORTED_VERSION"],
+    [JSON.stringify({ schemaVersion: 1, storeRevision: 0, missions: [{ ...mission, agentIds: ["unknown"] }] }), 422, "UNKNOWN_AGENT"],
+    ["x".repeat(128 * 1024 + 1), 413, "REQUEST_TOO_LARGE"],
+  ]) {
+    const rejected = await fetch(`${base}/api/missions-restore/preview`, { method: "POST", headers: { "content-type": "application/json" }, body });
+    assert.equal(rejected.status, expectedStatus);
+    assert.equal((await rejected.json()).error.code, expectedCode);
+    assert.equal(await (await fetch(`${base}/api/missions-export`)).text(), beforeRejectedRestore, `${expectedCode} must preserve the existing document`);
+  }
   const conflict = await fetch(`${base}/api/missions/${mission.id}/status`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "ready", expectedRevision: 0 }) });
   assert.equal(conflict.status, 409); assert.equal((await conflict.json()).error.code, "REVISION_CONFLICT");
   assert.equal((await fetch(`${base}/api/missions/not-valid`)).status, 404);
