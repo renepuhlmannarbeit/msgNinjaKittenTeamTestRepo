@@ -194,7 +194,7 @@ function normalizedMissionQuery(value) {
 function filteredMissions() {
   const query = normalizedMissionQuery(missionState.query);
   return missionState.missions.filter((mission) => {
-    const haystack = normalizedMissionQuery(`${mission.title} ${mission.outcome}`);
+    const haystack = normalizedMissionQuery(`${mission.title} ${mission.outcome} ${mission.agents.map(({ name, role }) => `${name} ${role}`).join(" ")}`);
     return missionState.statuses.has(mission.status) && (!query || haystack.includes(query));
   });
 }
@@ -203,7 +203,7 @@ function drawMissionOverview({ focus = false } = {}) {
   const section = document.createElement("section"); section.className = "mission-overview"; section.setAttribute("aria-labelledby", "mission-overview-title");
   const heading = text("h3", "Missionsübersicht"); heading.id = "mission-overview-title"; heading.tabIndex = -1;
   const controls = document.createElement("div"); controls.className = "mission-overview__controls";
-  const searchField = field("Missionen durchsuchen", "mission-search", missionState.query); searchField.input.type = "search"; searchField.input.placeholder = "Titel oder Outcome";
+  const searchField = field("Missionen durchsuchen", "mission-search", missionState.query); searchField.input.type = "search"; searchField.input.placeholder = "Titel, Ergebnis, Kitten oder Rolle";
   searchField.input.addEventListener("input", () => { missionState.query = searchField.input.value; drawMissionOverview(); document.querySelector("#mission-search")?.focus(); });
   const filters = document.createElement("fieldset"); filters.className = "filters"; filters.append(text("legend", "Status filtern"));
   const options = document.createElement("div"); options.className = "filter-options";
@@ -228,10 +228,11 @@ function drawMissionOverview({ focus = false } = {}) {
     for (const mission of shown) {
       const item = document.createElement("li"); item.className = "mission-list__item";
       const title = text("h4", mission.title); const outcome = text("p", mission.outcome);
+      const agents = text("p", `Kitten: ${mission.agents.map(({ name, role }) => `${name} (${role})`).join(", ")}`, "mission-agents");
       const status = text("p", `Status: ${statusLabels[mission.status]}`, "mission-status");
       const updated = text("p", `Aktualisiert: ${new Intl.DateTimeFormat("de", { dateStyle: "medium", timeStyle: "short" }).format(new Date(mission.updatedAt))}`, "mission-meta");
       const open = createButton(`${mission.title} öffnen`, "button button--secondary"); open.addEventListener("click", () => { location.hash = `mission=${encodeURIComponent(mission.id)}`; });
-      item.append(title, outcome, status, updated, open); list.append(item);
+      item.append(title, outcome, agents, status, updated, open); list.append(item);
     }
     listRegion.append(list);
   }

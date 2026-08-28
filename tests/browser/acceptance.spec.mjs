@@ -184,6 +184,31 @@ test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test("Missionsübersicht zeigt Kitten und sucht gemeinsam nach Name, Rolle und Status", async ({ page }) => {
+  const title = `Kitten auffindbar ${Date.now()}`;
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+  await page.getByLabel("Titel").fill(title);
+  await page.getByLabel("Gewünschtes Ergebnis").fill("Zuordnung sichtbar");
+  await page.getByLabel("Randbedingungen").fill("Keine");
+  await page.getByLabel("Kriterium 1").fill("Suche findet die Mission");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
+
+  const item = page.locator(".mission-list__item", { hasText: title });
+  await expect(item).toContainText("POwni (Produktstrategie)");
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill("Produktstrategie");
+  await expect(item).toBeVisible();
+  await page.getByLabel("Entwurf").uncheck();
+  await expect(item).toHaveCount(0);
+  await page.getByLabel("Entwurf").check();
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill("POwni");
+  await expect(item).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("Missionsübersicht erklärt leeren und fehlerhaften Listenabruf", async ({ page }) => {
   await page.route("**/api/missions", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ missions: [] }) }));
   await page.goto("/");

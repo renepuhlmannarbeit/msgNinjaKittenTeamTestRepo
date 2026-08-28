@@ -36,7 +36,7 @@ export class MissionStore {
 
   list() {
     return this.#document.missions
-      .map(({ id, title, outcome, status, updatedAt }) => ({ id, title, outcome, status, updatedAt }))
+      .map(({ id, title, outcome, status, updatedAt, agentIds }) => ({ id, title, outcome, status, updatedAt, agentIds }))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id));
   }
 

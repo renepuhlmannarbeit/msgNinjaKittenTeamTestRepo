@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { MissionStore } from "../src/mission-store.js";
-import { canonicalDocument, MissionError } from "../src/missions.js";
+import { canonicalDocument, missionListItem, MissionError } from "../src/missions.js";
 import { validateTeam } from "../src/domain.js";
 
 const HOST = "127.0.0.1";
@@ -33,8 +33,8 @@ async function jsonBody(request) {
   catch { throw new MissionError("INVALID_JSON", "Request body is not valid JSON."); }
 }
 
-async function api(request, response, pathname, store) {
-  if (request.method === "GET" && pathname === "/api/missions") { send(response, 200, { missions: store.list() }); return true; }
+async function api(request, response, pathname, store, teamById) {
+  if (request.method === "GET" && pathname === "/api/missions") { send(response, 200, { missions: store.list().map((mission) => missionListItem(mission, teamById)) }); return true; }
   if (request.method === "POST" && pathname === "/api/missions") { send(response, 201, { mission: await store.create(await jsonBody(request)) }); return true; }
   const match = pathname.match(/^\/api\/missions\/([^/]+)(?:\/(status))?$/);
   if (match) {
@@ -57,11 +57,12 @@ async function api(request, response, pathname, store) {
 async function loadTeam() { return validateTeam(JSON.parse(await readFile(new URL("../data/team.json", import.meta.url), "utf8"))); }
 export async function createAppServer({ missionsFile = process.env.MISSIONS_FILE ?? fileURLToPath(new URL("../var/missions.json", import.meta.url)) } = {}) {
   const team = await loadTeam();
+  const teamById = new Map(team.map((member) => [member.id, member]));
   const store = await new MissionStore(resolve(missionsFile), new Set(team.map(({ id }) => id))).initialize();
   return createServer(async (request, response) => {
     let pathname; try { pathname = new URL(request.url, `http://${HOST}`).pathname; } catch { send(response, 400, { error: { code: "BAD_REQUEST", message: "Bad Request" } }); return; }
     try {
-      if (pathname.startsWith("/api/")) { if (!(await api(request, response, pathname, store))) send(response, 404, { error: { code: "NOT_FOUND", message: "Not Found" } }); return; }
+      if (pathname.startsWith("/api/")) { if (!(await api(request, response, pathname, store, teamById))) send(response, 404, { error: { code: "NOT_FOUND", message: "Not Found" } }); return; }
       if (request.method !== "GET" && request.method !== "HEAD") { response.setHeader("Allow", "GET, HEAD"); send(response, 405, "Method Not Allowed", "text/plain; charset=utf-8"); return; }
       const route = routes.get(pathname); if (!route) { send(response, 404, "Not Found", "text/plain; charset=utf-8"); return; }
       const [relativePath, contentType] = route; const body = await readFile(fileURLToPath(new URL(relativePath, import.meta.url)));

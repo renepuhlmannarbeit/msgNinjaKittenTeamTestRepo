@@ -97,6 +97,23 @@ export function createMission(raw, knownIds, now = new Date().toISOString(), id 
   });
 }
 
+export function missionListItem(mission, teamById) {
+  if (!(teamById instanceof Map)) fail("INVALID_ARGUMENT", "teamById must be a Map.");
+  const agents = mission.agentIds.map((id) => {
+    const member = teamById.get(id);
+    if (!member) fail("UNKNOWN_AGENT", "Mission contains an unknown agent id.", { agentIds: [id] });
+    return Object.freeze({ id, name: member.name, role: member.role });
+  });
+  return Object.freeze({
+    id: mission.id,
+    title: mission.title,
+    outcome: mission.outcome,
+    status: mission.status,
+    updatedAt: mission.updatedAt,
+    agents: Object.freeze(agents),
+  });
+}
+
 export function updateMission(current, raw, expectedRevision, knownIds, now = new Date().toISOString()) {
   if (current.status === "completed") fail("INVALID_TRANSITION", "Completed missions cannot be edited.");
   if (expectedRevision !== current.revision) {
