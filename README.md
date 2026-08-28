@@ -48,7 +48,7 @@ Die Anwendung validiert Anzahl, Typen, nichtleere getrimmte Texte, mindestens
 ein Fachgebiet sowie eindeutige IDs und Namen. Ungültige Daten werden
 vollständig abgewiesen und als verständlicher Fehlerzustand angezeigt.
 
-### Missionsakte: Schema v1 und API-Vertrag
+### Missionsakte: Schema v2 und API-Vertrag
 
 Der lokale Server persistiert Missionsakten standardmäßig in
 `var/missions.json`; `MISSIONS_FILE` kann für Tests und Sicherungen einen
@@ -56,7 +56,7 @@ anderen Pfad setzen. Das Dokument hat exakt diese Hülle:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "storeRevision": 3,
   "missions": [{
     "id": "opake-zufaellige-id",
@@ -65,6 +65,7 @@ anderen Pfad setzen. Das Dokument hat exakt diese Hülle:
     "constraints": "Randbedingungen",
     "criteria": ["Prüfbares Kriterium"],
     "agentIds": ["backendi"],
+    "completion": null,
     "status": "draft",
     "revision": 1,
     "createdAt": "2026-08-27T00:00:00.000Z",
@@ -73,13 +74,34 @@ anderen Pfad setzen. Das Dokument hat exakt diese Hülle:
 }
 ```
 
-V1 akzeptiert nur exakt bekannte Felder und ausschließlich IDs aus
+V2 akzeptiert nur exakt bekannte Felder und ausschließlich IDs aus
 `data/team.json`. Grenzen: 100 Akten, 1–4 eindeutige Agenten, 1–5 Kriterien,
 Titel 120, Ergebnis 2.000, Randbedingungen 4.000 und je Kriterium 500 Zeichen;
 Request und Restore-Dokument sind auf 128 KiB begrenzt. Es gibt in V1 keine
-ältere unterstützte Version zu migrieren. Versionen kleiner als 1 sind
-ungültig, Versionen größer als 1 werden mit `UNSUPPORTED_VERSION` ohne
+ältere unterstützte Version zu migrieren. Beim Laden oder Restore wird ein
+gültiges Schema-v1-Dokument im Speicher verlustfrei zu v2 gehoben; bestehende
+Felder und Revisionen bleiben erhalten, `completion` wird `null`. Historische
+abgeschlossene v1-Akten bleiben damit lesbar und unveränderlich und werden in
+der Oberfläche ausdrücklich als ohne damalige Abschlussangaben gekennzeichnet.
+Der nächste Export schreibt kanonisches Schema v2. Versionen kleiner als 1 sind
+ungültig, Versionen größer als 2 werden mit `UNSUPPORTED_VERSION` ohne
 Schreibwirkung abgewiesen.
+
+Beim neuen Übergang `ready → completed` ist `completion` verpflichtend:
+
+```json
+{
+  "status": "completed",
+  "expectedRevision": 2,
+  "completion": {
+    "summary": "Kurze tatsächliche Abschlusszusammenfassung",
+    "evidence": ["PR #42", "Commit abc123", "npm test (grün)"]
+  }
+}
+```
+
+Die Zusammenfassung ist auf 2.000 Zeichen begrenzt; es sind ein bis fünf
+nichtleere Klartextreferenzen mit je höchstens 500 Zeichen erforderlich.
 
 | Methode und Pfad | Vertrag |
 | --- | --- |
@@ -87,8 +109,8 @@ Schreibwirkung abgewiesen.
 | `POST /api/missions` | Eingabefelder der Akte; erzeugt `draft`, Revision 1 und opake ID |
 | `GET /api/missions/:id` | liefert eine Akte oder `NOT_FOUND` |
 | `PUT /api/missions/:id` | `{mission, expectedRevision}`; abgeschlossene Akten unveränderlich |
-| `POST /api/missions/:id/status` | `{status, expectedRevision}`; nur `draft→ready→completed` |
-| `GET /api/missions-export` | kanonisch geordnetes Schema-v1-Dokument |
+| `POST /api/missions/:id/status` | `{status, expectedRevision, completion?}`; nur `draft→ready→completed`, Abschlussangaben beim letzten Übergang verpflichtend |
+| `GET /api/missions-export` | kanonisch geordnetes Schema-v2-Dokument |
 | `POST /api/missions-restore/preview` | validiert ohne Mutation und liefert Einmal-Token, Digest sowie Revisionen |
 | `POST /api/missions-restore/apply` | `{previewToken, expectedStoreRevision}`; Vorschau und Bestand müssen unverändert sein |
 

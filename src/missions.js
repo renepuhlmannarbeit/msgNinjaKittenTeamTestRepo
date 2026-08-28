@@ -1,12 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
 
-export const MISSION_SCHEMA_VERSION = 1;
+export const MISSION_SCHEMA_VERSION = 2;
 export const MAX_MISSIONS = 100;
 export const MAX_DOCUMENT_BYTES = 128 * 1024;
 export const MAX_TITLE_LENGTH = 120;
 export const MAX_OUTCOME_LENGTH = 2000;
 export const MAX_CONSTRAINTS_LENGTH = 4000;
 export const MAX_CRITERION_LENGTH = 500;
+export const MAX_COMPLETION_SUMMARY_LENGTH = 2000;
+export const MAX_EVIDENCE_LENGTH = 500;
 export const MISSION_STATUSES = Object.freeze(["draft", "ready", "completed"]);
 
 export class MissionError extends Error {
@@ -87,6 +89,7 @@ export function createMission(raw, knownIds, now = new Date().toISOString(), id 
   return Object.freeze({
     id,
     ...input,
+    completion: null,
     status: "draft",
     revision: 1,
     createdAt: now,
@@ -103,19 +106,32 @@ export function updateMission(current, raw, expectedRevision, knownIds, now = ne
   return Object.freeze({ ...current, ...input, revision: current.revision + 1, updatedAt: now });
 }
 
-export function transitionMission(current, nextStatus, expectedRevision, now = new Date().toISOString()) {
+export function validateCompletion(raw) {
+  const completion = plainObject(raw, "Completion");
+  exactKeys(completion, ["summary", "evidence"], "Completion");
+  if (!Array.isArray(completion.evidence) || completion.evidence.length < 1 || completion.evidence.length > 5) {
+    fail("INVALID_DATA", "Completion evidence must contain 1 to 5 entries.");
+  }
+  return Object.freeze({
+    summary: text(completion.summary, "Completion summary", MAX_COMPLETION_SUMMARY_LENGTH),
+    evidence: Object.freeze(completion.evidence.map((item) => text(item, "Completion evidence", MAX_EVIDENCE_LENGTH))),
+  });
+}
+
+export function transitionMission(current, nextStatus, expectedRevision, completion = null, now = new Date().toISOString()) {
   if (expectedRevision !== current.revision) {
     fail("REVISION_CONFLICT", "Mission revision does not match.", { currentRevision: current.revision });
   }
   if (nextStatus === current.status) return current;
   const allowed = current.status === "draft" ? "ready" : current.status === "ready" ? "completed" : null;
   if (nextStatus !== allowed) fail("INVALID_TRANSITION", `Cannot transition from ${current.status} to ${nextStatus}.`);
-  return Object.freeze({ ...current, status: nextStatus, revision: current.revision + 1, updatedAt: now });
+  if (nextStatus !== "completed" && completion !== null) fail("INVALID_DATA", "Completion is only accepted when completing a mission.");
+  return Object.freeze({ ...current, status: nextStatus, completion: nextStatus === "completed" ? validateCompletion(completion) : current.completion, revision: current.revision + 1, updatedAt: now });
 }
 
 export function validateDocument(raw, knownIds) {
   const document = plainObject(raw, "Mission document");
-  if (document.schemaVersion !== MISSION_SCHEMA_VERSION) {
+  if (![1, MISSION_SCHEMA_VERSION].includes(document.schemaVersion)) {
     fail(document.schemaVersion > MISSION_SCHEMA_VERSION ? "UNSUPPORTED_VERSION" : "INVALID_DATA", "Unsupported mission schema version.");
   }
   exactKeys(document, ["schemaVersion", "storeRevision", "missions"], "Mission document");
@@ -126,7 +142,7 @@ export function validateDocument(raw, knownIds) {
   const ids = new Set();
   const missions = document.missions.map((rawMission, index) => {
     const mission = plainObject(rawMission, `Mission ${index}`);
-    exactKeys(mission, ["id", "title", "outcome", "constraints", "criteria", "agentIds", "status", "revision", "createdAt", "updatedAt"], `Mission ${index}`);
+    exactKeys(mission, document.schemaVersion === 1 ? ["id", "title", "outcome", "constraints", "criteria", "agentIds", "status", "revision", "createdAt", "updatedAt"] : ["id", "title", "outcome", "constraints", "criteria", "agentIds", "completion", "status", "revision", "createdAt", "updatedAt"], `Mission ${index}`);
     const id = text(mission.id, "Mission id", 64);
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(id) || ids.has(id)) fail("INVALID_DATA", "Mission ids must be opaque and unique.");
     ids.add(id);
@@ -138,7 +154,9 @@ export function validateDocument(raw, knownIds) {
       agentIds: mission.agentIds,
     }, knownIds);
     if (!MISSION_STATUSES.includes(mission.status)) fail("INVALID_DATA", "Mission status is invalid.");
-    return Object.freeze({ id, ...fields, status: mission.status, revision: positiveInteger(mission.revision, "Mission revision"), createdAt: isoDate(mission.createdAt, "createdAt"), updatedAt: isoDate(mission.updatedAt, "updatedAt") });
+    const completion = document.schemaVersion === 1 || mission.completion === null ? null : validateCompletion(mission.completion);
+    if (completion && mission.status !== "completed") fail("INVALID_DATA", "Only completed missions may contain completion details.");
+    return Object.freeze({ id, ...fields, completion, status: mission.status, revision: positiveInteger(mission.revision, "Mission revision"), createdAt: isoDate(mission.createdAt, "createdAt"), updatedAt: isoDate(mission.updatedAt, "updatedAt") });
   });
   missions.sort((left, right) => left.id.localeCompare(right.id));
   const validated = Object.freeze({ schemaVersion: MISSION_SCHEMA_VERSION, storeRevision: document.storeRevision, missions: Object.freeze(missions) });

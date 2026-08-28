@@ -134,8 +134,15 @@ test("Missionsakte wird erstellt, über Hash fortgesetzt und vorwärts abgeschlo
   await expect(page.getByText("Status: Entwurf")).toBeVisible();
   await page.getByRole("button", { name: "Als bereit markieren" }).click();
   await expect(page.getByText("Status: Bereit", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Als abgeschlossen markieren" }).click();
+  await page.getByRole("button", { name: "Abschluss dokumentieren" }).click();
+  await page.getByRole("button", { name: "Mission abschließen" }).click();
+  await expect(page.locator(".validation-summary")).toBeFocused();
+  await page.getByLabel("Kurze Abschlusszusammenfassung").fill("Release ist geprüft und freigegeben");
+  await page.getByLabel("Nachweise (eine Klartextreferenz pro Zeile)").fill("PR #42\ncommit abc123");
+  await page.getByRole("button", { name: "Mission abschließen" }).click();
   await expect(page.getByText("Status: Abgeschlossen", { exact: true })).toBeVisible();
+  await expect(page.getByText("Release ist geprüft und freigegeben")).toBeVisible();
+  await expect(page.getByText("PR #42")).toBeVisible();
   await expect(page.getByRole("button", { name: "Missionsakte bearbeiten" })).toHaveCount(0);
 });
 
@@ -204,7 +211,7 @@ test("Validierung erhält Eingaben; Export und zweistufiger Restore bleiben zug�
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Missionsakten exportieren" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("missions-v1.json");
+  expect(download.suggestedFilename()).toBe("missions-v2.json");
   const exportPath = await download.path();
   await page.setInputFiles("#restore-file", exportPath);
   await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
@@ -234,6 +241,26 @@ test("Revisionskonflikt und Netzwerkfehler bewahren den lokalen Entwurf", async 
   await expect(page.getByLabel("Titel")).toHaveValue("Lokaler Konfliktentwurf");
 });
 
+test("Revisionskonflikt beim Abschluss bewahrt Zusammenfassung und Nachweis", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+  await page.getByLabel("Titel").fill("Konfliktabschluss");
+  await page.getByLabel("Gewünschtes Ergebnis").fill("Nachvollziehbar fertig");
+  await page.getByLabel("Randbedingungen").fill("Lokal");
+  await page.getByLabel("Kriterium 1").fill("Belegt");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await page.getByRole("button", { name: "Als bereit markieren" }).click();
+  await page.getByRole("button", { name: "Abschluss dokumentieren" }).click();
+  await page.getByLabel("Kurze Abschlusszusammenfassung").fill("Meine Abschlussangabe");
+  await page.getByLabel("Nachweise (eine Klartextreferenz pro Zeile)").fill("commit deadbeef");
+  await page.route("**/api/missions/*/status", (route) => route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: { code: "REVISION_CONFLICT", message: "conflict", details: { currentRevision: 3 } } }) }));
+  await page.getByRole("button", { name: "Mission abschließen" }).click();
+  await expect(page.locator("#mission-error")).toContainText("Abschlussangaben bleiben erhalten");
+  await expect(page.getByLabel("Kurze Abschlusszusammenfassung")).toHaveValue("Meine Abschlussangabe");
+  await expect(page.getByLabel("Nachweise (eine Klartextreferenz pro Zeile)")).toHaveValue("commit deadbeef");
+});
+
 test("Restore lehnt ungültige, zu große und neuere Sicherungen ohne Übernahme ab", async ({ page }) => {
   await page.goto("/");
   await page.setInputFiles("#restore-file", { name: "kaputt.json", mimeType: "application/json", buffer: Buffer.from("{") });
@@ -244,7 +271,7 @@ test("Restore lehnt ungültige, zu große und neuere Sicherungen ohne Übernahme
   await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
   await expect(page.locator("#mission-error")).toContainText("zu groß");
 
-  const future = { schemaVersion: 2, storeRevision: 0, missions: [] };
+  const future = { schemaVersion: 3, storeRevision: 0, missions: [] };
   await page.setInputFiles("#restore-file", { name: "zukunft.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(future)) });
   await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
   await expect(page.locator("#mission-error")).toContainText("nicht unterstützte neuere Version");
