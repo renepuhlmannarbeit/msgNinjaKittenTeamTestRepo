@@ -139,6 +139,57 @@ test("Missionsakte wird erstellt, über Hash fortgesetzt und vorwärts abgeschlo
   await expect(page.getByRole("button", { name: "Missionsakte bearbeiten" })).toHaveCount(0);
 });
 
+test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async ({ page }) => {
+  const marker = `Uebersicht-${Date.now()}`;
+  const firstTitle = `Erste ${marker}`;
+  const secondTitle = `Zweite ${marker}`;
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Missionsübersicht" })).toBeVisible();
+
+  for (const [title, outcome] of [[firstTitle, `Alpha-${marker}`], [secondTitle, `Beta-${marker}`]]) {
+    await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+    await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+    await page.getByLabel("Titel").fill(title);
+    await page.getByLabel("Gewünschtes Ergebnis").fill(outcome);
+    await page.getByLabel("Randbedingungen").fill("Keine");
+    await page.getByLabel("Kriterium 1").fill("Geprüft");
+    await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+    await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
+  }
+
+  const items = page.locator(".mission-list__item");
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(marker);
+  await expect(items).toHaveCount(2);
+  await expect(items.first()).toContainText(secondTitle);
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(`Alpha-${marker}`);
+  await expect(page.locator("#mission-list-summary")).toContainText("1 von");
+  await expect(items).toHaveCount(1);
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(marker);
+  await page.getByLabel("Abgeschlossen").uncheck();
+  await expect(items).toHaveCount(2);
+  await page.getByLabel("Entwurf").uncheck();
+  await expect(page.getByText("Keine Mission passt zu Suche und Statusfilter.")).toBeVisible();
+  await page.getByRole("button", { name: "Missionsfilter zurücksetzen" }).click();
+  await page.getByRole("button", { name: `${secondTitle} öffnen` }).click();
+  await expect(page).toHaveURL(/#mission=/);
+  await expect(page.getByRole("heading", { name: secondTitle })).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("Missionsübersicht erklärt leeren und fehlerhaften Listenabruf", async ({ page }) => {
+  await page.route("**/api/missions", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ missions: [] }) }));
+  await page.goto("/");
+  await expect(page.getByText("Noch keine Missionen vorhanden.")).toBeVisible();
+
+  await page.unroute("**/api/missions");
+  await page.route("**/api/missions", (route) => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: { code: "INTERNAL_ERROR", message: "fail" } }) }));
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Missionen konnten nicht geladen werden" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Missionen erneut laden" })).toBeVisible();
+  await expect(page.locator("#mission-error")).toHaveAttribute("role", "alert");
+});
+
 test("Validierung erhält Eingaben; Export und zweistufiger Restore bleiben zugänglich", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto("/");

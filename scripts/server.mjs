@@ -34,6 +34,7 @@ async function jsonBody(request) {
 }
 
 async function api(request, response, pathname, store) {
+  if (request.method === "GET" && pathname === "/api/missions") { send(response, 200, { missions: store.list() }); return true; }
   if (request.method === "POST" && pathname === "/api/missions") { send(response, 201, { mission: await store.create(await jsonBody(request)) }); return true; }
   const match = pathname.match(/^\/api\/missions\/([^/]+)(?:\/(status))?$/);
   if (match) {

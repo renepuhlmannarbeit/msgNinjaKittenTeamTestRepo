@@ -83,6 +83,7 @@ Schreibwirkung abgewiesen.
 
 | Methode und Pfad | Vertrag |
 | --- | --- |
+| `GET /api/missions` | liefert `{missions}` als Read-only-Kurzliste aus `id`, `title`, `outcome`, `status`, `updatedAt`, zuletzt aktualisiert zuerst |
 | `POST /api/missions` | Eingabefelder der Akte; erzeugt `draft`, Revision 1 und opake ID |
 | `GET /api/missions/:id` | liefert eine Akte oder `NOT_FOUND` |
 | `PUT /api/missions/:id` | `{mission, expectedRevision}`; abgeschlossene Akten unveränderlich |
