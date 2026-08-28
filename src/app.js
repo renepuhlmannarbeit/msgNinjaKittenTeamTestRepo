@@ -46,6 +46,7 @@ let state = {
   error: null,
 };
 let locallySharedHash = null;
+let lastRoutedHref = window.location.href;
 let missionState = { status: "board", mission: null, draft: null, preview: null, missions: [], query: "", statuses: new Set(["draft", "ready", "completed"]) };
 
 const statusLabels = { draft: "Entwurf", ready: "Bereit", completed: "Abgeschlossen" };
@@ -133,7 +134,7 @@ async function saveMission(form, summary, input, mission) {
       ? await apiRequest(`/api/missions/${encodeURIComponent(mission.id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mission: input, expectedRevision: mission.revision }) })
       : await apiRequest("/api/missions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
     missionState = { ...missionState, status: "detail", mission: payload.mission, draft: null };
-    history.pushState(null, "", `#mission=${encodeURIComponent(payload.mission.id)}`); renderMissionDetail(payload.mission); setMissionMessage("Missionsakte gespeichert.");
+    history.pushState(null, "", `#mission=${encodeURIComponent(payload.mission.id)}`); lastRoutedHref = window.location.href; renderMissionDetail(payload.mission); setMissionMessage("Missionsakte gespeichert.");
   } catch (error) {
     missionState.status = error.code === "REVISION_CONFLICT" ? "conflict" : "editing";
     const message = error.code === "REVISION_CONFLICT" ? "Nicht gespeichert: Die Akte wurde inzwischen geändert. Deine Eingaben bleiben erhalten. Lade die Akte neu, um zu vergleichen." : error.status === 413 ? "Die Eingabe ist zu groß und wurde nicht gespeichert." : "Die Änderung konnte nicht gespeichert werden. Deine Eingaben bleiben erhalten; bitte versuche es erneut.";
@@ -159,7 +160,7 @@ function renderMissionDetail(mission) {
   const actions = document.createElement("div"); actions.className = "mission-actions";
   if (mission.status !== "completed") { const edit = createButton("Missionsakte bearbeiten"); edit.addEventListener("click", () => renderMissionForm(missionInput(mission), mission)); actions.append(edit); const next = mission.status === "draft" ? "ready" : "completed"; const transition = createButton(next === "ready" ? "Als bereit markieren" : "Abschluss dokumentieren", "button button--secondary"); transition.addEventListener("click", () => next === "completed" ? renderCompletionForm(mission) : transitionMission(mission, next)); actions.append(transition); }
   const copy = createButton("Als neuen Entwurf übernehmen", "button button--secondary"); copy.addEventListener("click", () => { missionState.status = "copying"; renderMissionForm(missionInput(mission), null, mission); }); actions.append(copy);
-  const board = createButton("Zur Missionsübersicht", "button button--text"); board.addEventListener("click", () => { history.pushState(null, "", location.pathname + location.search); missionState = { ...missionState, status: "board", mission: null, draft: null }; renderMissionOverview({ focus: true }); }); actions.append(board);
+  const board = createButton("Zur Missionsübersicht", "button button--text"); board.addEventListener("click", () => { history.pushState(null, "", location.pathname + location.search); lastRoutedHref = window.location.href; missionState = { ...missionState, status: "board", mission: null, draft: null }; renderMissionOverview({ focus: true }); }); actions.append(board);
   box.append(actions); elements.missionView.replaceChildren(box); heading.focus();
 }
 
@@ -623,8 +624,10 @@ elements.createMission.addEventListener("click", () => {
 });
 elements.exportMissions.addEventListener("click", exportMissions);
 elements.previewRestore.addEventListener("click", previewRestore);
-window.addEventListener("hashchange", () => {
+function routeLocationChange() {
   if (state.status !== "ready") return;
+  if (window.location.href === lastRoutedHref) return;
+  lastRoutedHref = window.location.href;
   if (window.location.hash.startsWith("#mission=")) {
     locallySharedHash = null;
     loadMissionFromHash();
@@ -638,6 +641,9 @@ window.addEventListener("hashchange", () => {
   restoreSharedCell({ clearMissing: true });
   render();
   renderMissionOverview();
-});
+}
+
+window.addEventListener("popstate", routeLocationChange);
+window.addEventListener("hashchange", routeLocationChange);
 
 loadTeam();

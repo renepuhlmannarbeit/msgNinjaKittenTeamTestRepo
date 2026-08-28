@@ -246,9 +246,15 @@ test("Mission wird erst nach bewusster Übernahme als neuer Entwurf angelegt", a
   await expect(page).toHaveURL(/#mission=[A-Za-z0-9_-]{16,64}$/);
   await expect(page.getByText("Status: Entwurf", { exact: true })).toBeVisible();
   await expect(page.getByText("POwni, ArchiTorti", { exact: true })).toBeVisible();
-  await page.goto(originalUrl);
+  const copyUrl = page.url();
+  await page.goBack();
+  await expect(page).toHaveURL(originalUrl);
   await expect(page.getByRole("heading", { name: marker })).toBeFocused();
   await expect(page.getByText("Status: Bereit", { exact: true })).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(copyUrl);
+  await expect(page.getByRole("heading", { name: `${marker} Kopie` })).toBeFocused();
+  await expect(page.getByText("Status: Entwurf", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
