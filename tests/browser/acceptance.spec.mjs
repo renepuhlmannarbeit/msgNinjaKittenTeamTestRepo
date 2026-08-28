@@ -209,6 +209,37 @@ test("Missionsübersicht zeigt Kitten und sucht gemeinsam nach Name, Rolle und S
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test("Missionsfilter sind per URL teilbar und folgen der Browser-Navigation", async ({ page }) => {
+  const title = `Teilbar ${Date.now()}`;
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+  await page.getByLabel("Titel").fill(title);
+  await page.getByLabel("Gewünschtes Ergebnis").fill("Filter über einen Link wiederherstellen");
+  await page.getByLabel("Randbedingungen").fill("Keine");
+  await page.getByLabel("Kriterium 1").fill("URL enthält die Filter");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
+
+  const search = page.getByRole("searchbox", { name: "Missionen durchsuchen" });
+  await search.fill(title);
+  await page.getByLabel("Abgeschlossen").uncheck();
+  const sharedUrl = page.url();
+  expect(sharedUrl).toContain("missionQuery=");
+  expect(sharedUrl).toContain("missionStatus=draft%2Cready");
+
+  await page.goto(sharedUrl);
+  await expect(search).toHaveValue(title);
+  await expect(page.getByLabel("Abgeschlossen")).not.toBeChecked();
+  await expect(page.getByRole("button", { name: `${title} öffnen` })).toBeVisible();
+
+  await search.fill(`${title} fehlt`);
+  await expect(page.getByText("Keine Mission passt zu Suche und Statusfilter.")).toBeVisible();
+  await page.goBack();
+  await expect(search).toHaveValue(title);
+  await expect(page.getByLabel("Abgeschlossen")).not.toBeChecked();
+});
+
 test("Mission wird erst nach bewusster Übernahme als neuer Entwurf angelegt", async ({ page }) => {
   const marker = `Kopiervorlage-${Date.now()}`;
   await page.setViewportSize({ width: 320, height: 800 });

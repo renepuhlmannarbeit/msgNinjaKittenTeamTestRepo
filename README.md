@@ -135,7 +135,10 @@ nur bekannte IDs übernommen; Duplikate, unbekannte IDs und weitere gültige
 Einträge nach den ersten vier werden ausgelassen und einmalig angekündigt.
 Fragmente über 512 Zeichen oder mit mehr als 32 Tokens sowie fehlerhafte
 Prozentkodierung werden vollständig verworfen. Suche und Fachfilter sind
-absichtlich nicht Teil des Links.
+absichtlich nicht Teil des Links. Die Missionsübersicht teilt ihren Suchtext
+als `missionQuery` sowie die ausgewählten Statuswerte als kommaseparierten
+Parameter `missionStatus` in der URL; bei Direktaufruf und Browser-Navigation
+werden beide wiederhergestellt.
 
 ## Voraussetzungen
 
