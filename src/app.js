@@ -50,6 +50,25 @@ let lastRoutedHref = window.location.href;
 let missionState = { status: "board", mission: null, draft: null, preview: null, missions: [], query: "", statuses: new Set(["draft", "ready", "completed"]) };
 
 const statusLabels = { draft: "Entwurf", ready: "Bereit", completed: "Abgeschlossen" };
+const missionStatuses = ["draft", "ready", "completed"];
+
+function restoreMissionFiltersFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const statuses = new Set((params.get("missionStatus") || "").split(",").filter((status) => missionStatuses.includes(status)));
+  missionState.query = params.get("missionQuery") || "";
+  missionState.statuses = statuses.size > 0 || params.has("missionStatus") ? statuses : new Set(missionStatuses);
+}
+
+function shareMissionFilters() {
+  const url = new URL(window.location.href);
+  const statuses = missionStatuses.filter((status) => missionState.statuses.has(status));
+  if (missionState.query) url.searchParams.set("missionQuery", missionState.query);
+  else url.searchParams.delete("missionQuery");
+  if (statuses.length === missionStatuses.length) url.searchParams.delete("missionStatus");
+  else url.searchParams.set("missionStatus", statuses.join(","));
+  history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  lastRoutedHref = window.location.href;
+}
 
 async function apiRequest(path, options = {}) {
   let response;
@@ -213,13 +232,13 @@ function drawMissionOverview({ focus = false } = {}) {
   const heading = text("h3", "Missionsübersicht"); heading.id = "mission-overview-title"; heading.tabIndex = -1;
   const controls = document.createElement("div"); controls.className = "mission-overview__controls";
   const searchField = field("Missionen durchsuchen", "mission-search", missionState.query); searchField.input.type = "search"; searchField.input.placeholder = "Titel, Ergebnis, Kitten oder Rolle";
-  searchField.input.addEventListener("input", () => { missionState.query = searchField.input.value; drawMissionOverview(); document.querySelector("#mission-search")?.focus(); });
+  searchField.input.addEventListener("input", () => { missionState.query = searchField.input.value; shareMissionFilters(); drawMissionOverview(); document.querySelector("#mission-search")?.focus(); });
   const filters = document.createElement("fieldset"); filters.className = "filters"; filters.append(text("legend", "Status filtern"));
   const options = document.createElement("div"); options.className = "filter-options";
-  for (const status of ["draft", "ready", "completed"]) {
+  for (const status of missionStatuses) {
     const label = document.createElement("label"); label.className = "filter";
     const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.value = status; checkbox.checked = missionState.statuses.has(status);
-    checkbox.addEventListener("change", () => { if (checkbox.checked) missionState.statuses.add(status); else missionState.statuses.delete(status); drawMissionOverview(); document.querySelector(`input[value="${status}"]`)?.focus(); });
+    checkbox.addEventListener("change", () => { if (checkbox.checked) missionState.statuses.add(status); else missionState.statuses.delete(status); shareMissionFilters(); drawMissionOverview(); document.querySelector(`input[value="${status}"]`)?.focus(); });
     label.append(checkbox, text("span", statusLabels[status])); options.append(label);
   }
   filters.append(options); controls.append(searchField.wrapper, filters);
@@ -230,7 +249,7 @@ function drawMissionOverview({ focus = false } = {}) {
     listRegion.append(text("p", "Noch keine Missionen vorhanden. Erstelle eine Missionsakte aus einer Arbeitszelle.", "status-card"));
   } else if (shown.length === 0) {
     const empty = text("p", "Keine Mission passt zu Suche und Statusfilter.", "status-card");
-    const reset = createButton("Missionsfilter zurücksetzen", "button button--secondary"); reset.addEventListener("click", () => { missionState.query = ""; missionState.statuses = new Set(["draft", "ready", "completed"]); drawMissionOverview({ focus: true }); });
+    const reset = createButton("Missionsfilter zurücksetzen", "button button--secondary"); reset.addEventListener("click", () => { missionState.query = ""; missionState.statuses = new Set(missionStatuses); shareMissionFilters(); drawMissionOverview({ focus: true }); });
     listRegion.append(empty, reset);
   } else {
     const list = document.createElement("ul"); list.className = "mission-list";
@@ -598,6 +617,7 @@ async function loadTeam() {
       throw new AppError(ERROR_CODES.JSON, "Team JSON is invalid.", { cause: error });
     }
     state = { ...state, status: "ready", members: validateTeam(payload) };
+    restoreMissionFiltersFromUrl();
     if (!(await loadMissionFromHash())) { restoreSharedCell(); await renderMissionOverview(); }
   } catch (error) {
     state = { ...state, status: "error", error: toLoadError(error) };
@@ -638,6 +658,7 @@ function routeLocationChange() {
     return;
   }
   locallySharedHash = null;
+  restoreMissionFiltersFromUrl();
   restoreSharedCell({ clearMissing: true });
   render();
   renderMissionOverview();
