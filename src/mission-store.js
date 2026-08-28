@@ -58,11 +58,11 @@ export class MissionStore {
     });
   }
 
-  transition(id, status, expectedRevision) {
+  transition(id, status, expectedRevision, completion) {
     return this.#mutate((document) => {
       const current = document.missions.find((mission) => mission.id === id);
       if (!current) throw Object.assign(new Error("Mission not found."), { code: "NOT_FOUND" });
-      const result = transitionMission(current, status, expectedRevision);
+      const result = transitionMission(current, status, expectedRevision, completion);
       return { result, missions: document.missions.map((mission) => mission.id === id ? result : mission) };
     });
   }

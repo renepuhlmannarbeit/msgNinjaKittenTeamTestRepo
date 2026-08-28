@@ -139,16 +139,52 @@ function renderMissionDetail(mission) {
   const heading = text("h3", mission.title); heading.id = "mission-title"; heading.tabIndex = -1;
   const agents = mission.agentIds.map((id) => state.members.find((member) => member.id === id)?.name || id);
   const list = document.createElement("ol"); mission.criteria.forEach((item) => list.append(text("li", item)));
-  box.append(heading, text("p", `Status: ${statusLabels[mission.status]}`, "mission-status"), text("p", `Version ${mission.revision}`, "mission-meta"), text("h4", "Gewünschtes Ergebnis"), text("p", mission.outcome), text("h4", "Arbeitszelle"), text("p", agents.join(", ")), text("h4", "Akzeptanzkriterien"), list, text("h4", "Randbedingungen"), text("p", mission.constraints));
+  box.append(heading, text("p", `Status: ${statusLabels[mission.status]}`, "mission-status"), text("p", `Version ${mission.revision}`, "mission-meta"), text("h4", "Geplantes Ergebnis"), text("p", mission.outcome), text("h4", "Arbeitszelle"), text("p", agents.join(", ")), text("h4", "Akzeptanzkriterien"), list, text("h4", "Randbedingungen"), text("p", mission.constraints));
+  if (mission.status === "completed") {
+    box.append(text("h4", "Tatsächlicher Abschluss"));
+    if (mission.completion) {
+      box.append(text("p", mission.completion.summary), text("h4", "Nachweise"));
+      const evidence = document.createElement("ul"); mission.completion.evidence.forEach((item) => evidence.append(text("li", item))); box.append(evidence);
+    } else {
+      box.append(text("p", "Für diese aus Schema v1 übernommene Akte wurden keine Abschlussangaben erfasst.", "status-card"));
+    }
+  }
   const actions = document.createElement("div"); actions.className = "mission-actions";
-  if (mission.status !== "completed") { const edit = createButton("Missionsakte bearbeiten"); edit.addEventListener("click", () => renderMissionForm(missionInput(mission), mission)); actions.append(edit); const next = mission.status === "draft" ? "ready" : "completed"; const transition = createButton(next === "ready" ? "Als bereit markieren" : "Als abgeschlossen markieren", "button button--secondary"); transition.addEventListener("click", () => transitionMission(mission, next)); actions.append(transition); }
+  if (mission.status !== "completed") { const edit = createButton("Missionsakte bearbeiten"); edit.addEventListener("click", () => renderMissionForm(missionInput(mission), mission)); actions.append(edit); const next = mission.status === "draft" ? "ready" : "completed"; const transition = createButton(next === "ready" ? "Als bereit markieren" : "Abschluss dokumentieren", "button button--secondary"); transition.addEventListener("click", () => next === "completed" ? renderCompletionForm(mission) : transitionMission(mission, next)); actions.append(transition); }
   const board = createButton("Zur Missionsübersicht", "button button--text"); board.addEventListener("click", () => { history.pushState(null, "", location.pathname + location.search); missionState = { ...missionState, status: "board", mission: null, draft: null }; renderMissionOverview({ focus: true }); }); actions.append(board);
   box.append(actions); elements.missionView.replaceChildren(box); heading.focus();
 }
 
-async function transitionMission(mission, status) {
-  try { const payload = await apiRequest(`/api/missions/${encodeURIComponent(mission.id)}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, expectedRevision: mission.revision }) }); missionState.mission = payload.mission; renderMissionDetail(payload.mission); setMissionMessage(`Status: ${statusLabels[status]}.`); }
-  catch (error) { setMissionMessage(error.code === "REVISION_CONFLICT" ? "Status nicht geändert: Die Akte wurde inzwischen geändert. Bitte lade sie neu." : "Der Status konnte nicht geändert werden.", true); }
+function renderCompletionForm(mission, completion = { summary: "", evidenceText: "" }) {
+  const form = document.createElement("form"); form.className = "mission-form"; form.noValidate = true;
+  const heading = text("h3", "Missionsabschluss dokumentieren"); heading.tabIndex = -1;
+  const planned = text("p", mission.outcome); const summary = document.createElement("div"); summary.className = "validation-summary"; summary.tabIndex = -1; summary.hidden = true;
+  const resultField = field("Kurze Abschlusszusammenfassung", "completion-summary", completion.summary, "textarea");
+  const evidenceField = field("Nachweise (eine Klartextreferenz pro Zeile)", "completion-evidence", completion.evidenceText, "textarea");
+  resultField.input.addEventListener("input", () => { completion.summary = resultField.input.value; });
+  evidenceField.input.addEventListener("input", () => { completion.evidenceText = evidenceField.input.value; });
+  const submit = document.createElement("button"); submit.type = "submit"; submit.className = "button"; submit.textContent = "Mission abschließen";
+  const cancel = createButton("Zur Missionsakte", "button button--text"); cancel.addEventListener("click", () => renderMissionDetail(mission));
+  form.append(heading, text("h4", "Geplantes Ergebnis"), planned, summary, resultField.wrapper, evidenceField.wrapper, submit, cancel);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const evidence = completion.evidenceText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    form.querySelectorAll("[aria-invalid]").forEach((node) => node.removeAttribute("aria-invalid"));
+    const invalid = []; if (!completion.summary.trim()) invalid.push(resultField.input); if (evidence.length < 1 || evidence.length > 5) invalid.push(evidenceField.input);
+    invalid.forEach((node) => node.setAttribute("aria-invalid", "true")); summary.hidden = invalid.length === 0;
+    summary.textContent = invalid.length ? "Ergänze eine kurze Zusammenfassung und ein bis fünf Nachweise, jeweils eine Referenz pro Zeile." : "";
+    if (invalid.length) { summary.focus(); return; }
+    await transitionMission(mission, "completed", { summary: completion.summary, evidence }, { form, completion });
+  });
+  elements.missionView.replaceChildren(form); heading.focus();
+}
+
+async function transitionMission(mission, status, completion = null, context = {}) {
+  try { const payload = await apiRequest(`/api/missions/${encodeURIComponent(mission.id)}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, expectedRevision: mission.revision, ...(completion ? { completion } : {}) }) }); missionState.mission = payload.mission; renderMissionDetail(payload.mission); setMissionMessage(`Status: ${statusLabels[status]}.`); }
+  catch (error) {
+    const message = error.code === "REVISION_CONFLICT" ? "Status nicht geändert: Die Akte wurde inzwischen geändert. Deine Abschlussangaben bleiben erhalten; lade die Akte neu, bevor du es erneut versuchst." : "Der Status konnte nicht geändert werden. Deine Eingaben bleiben erhalten.";
+    setMissionMessage(message, true); (context.form?.querySelector("button[type=submit]") || document.activeElement)?.focus();
+  }
 }
 
 function normalizedMissionQuery(value) {
@@ -228,7 +264,7 @@ async function loadMissionFromHash() {
 }
 
 async function exportMissions() {
-  try { const response = await fetch("/api/missions-export"); if (!response.ok) throw new Error(); const blob = await response.blob(); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "missions-v1.json"; link.click(); URL.revokeObjectURL(link.href); setMissionMessage("Missionsakten exportiert."); }
+  try { const response = await fetch("/api/missions-export"); if (!response.ok) throw new Error(); const blob = await response.blob(); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "missions-v2.json"; link.click(); URL.revokeObjectURL(link.href); setMissionMessage("Missionsakten exportiert."); }
   catch { setMissionMessage("Missionsakten konnten nicht exportiert werden.", true); }
 }
 

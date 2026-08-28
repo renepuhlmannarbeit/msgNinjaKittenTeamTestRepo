@@ -42,7 +42,7 @@ async function api(request, response, pathname, store) {
     if (!MISSION_ID.test(id)) throw new MissionError("NOT_FOUND", "Mission not found.");
     if (request.method === "GET" && !match[2]) { const mission = store.get(id); if (!mission) throw new MissionError("NOT_FOUND", "Mission not found."); send(response, 200, { mission }); return true; }
     if (request.method === "PUT" && !match[2]) { const body = await jsonBody(request); send(response, 200, { mission: await store.update(id, body.mission, body.expectedRevision) }); return true; }
-    if (request.method === "POST" && match[2] === "status") { const body = await jsonBody(request); send(response, 200, { mission: await store.transition(id, body.status, body.expectedRevision) }); return true; }
+    if (request.method === "POST" && match[2] === "status") { const body = await jsonBody(request); send(response, 200, { mission: await store.transition(id, body.status, body.expectedRevision, body.completion ?? null) }); return true; }
   }
   if (request.method === "GET" && pathname === "/api/missions-export") { send(response, 200, canonicalDocument(store.snapshot()), "application/json; charset=utf-8"); return true; }
   if (request.method === "POST" && pathname === "/api/missions-restore/preview") {
