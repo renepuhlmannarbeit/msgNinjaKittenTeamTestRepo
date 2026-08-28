@@ -46,6 +46,7 @@ let state = {
   error: null,
 };
 let locallySharedHash = null;
+let lastRoutedHref = window.location.href;
 let missionState = { status: "board", mission: null, draft: null, preview: null, missions: [], query: "", statuses: new Set(["draft", "ready", "completed"]) };
 
 const statusLabels = { draft: "Entwurf", ready: "Bereit", completed: "Abgeschlossen" };
@@ -77,10 +78,10 @@ function field(labelText, id, value, tag = "input") {
   wrapper.append(label, input); return { wrapper, input };
 }
 
-function renderMissionForm(input, mission = null) {
+function renderMissionForm(input, mission = null, copySource = null) {
   missionState.draft = input;
   const form = document.createElement("form"); form.id = "mission-form"; form.className = "mission-form"; form.noValidate = true;
-  const heading = text("h3", mission ? "Missionsakte bearbeiten" : "Neue Missionsakte"); heading.tabIndex = -1;
+  const heading = text("h3", mission ? "Missionsakte bearbeiten" : copySource ? "Mission als neuen Entwurf übernehmen" : "Neue Missionsakte"); heading.tabIndex = -1;
   const summary = document.createElement("div"); summary.id = "mission-validation-summary"; summary.className = "validation-summary"; summary.tabIndex = -1; summary.hidden = true;
   const titleField = field("Titel", "mission-title-input", input.title);
   const outcomeField = field("Gewünschtes Ergebnis", "mission-outcome", input.outcome, "textarea");
@@ -104,8 +105,15 @@ function renderMissionForm(input, mission = null) {
   const add = createButton("Kriterium hinzufügen", "button button--secondary"); add.addEventListener("click", () => { if (input.criteria.length < 5) { input.criteria.push(""); drawCriteria(input.criteria.length - 1); } });
   criteria.append(criteriaList, add); drawCriteria();
   for (const { input: control } of [titleField, outcomeField, constraintsField]) control.addEventListener("input", () => { input[control.id === "mission-title-input" ? "title" : control.id.replace("mission-", "")] = control.value; });
-  const save = document.createElement("button"); save.className = "button"; save.type = "submit"; save.textContent = mission ? "Missionsakte speichern" : "Missionsakte anlegen";
-  form.append(heading, summary, titleField.wrapper, outcomeField.wrapper, constraintsField.wrapper, criteria, save);
+  const save = document.createElement("button"); save.className = "button"; save.type = "submit"; save.textContent = mission ? "Missionsakte speichern" : copySource ? "Neuen Entwurf anlegen" : "Missionsakte anlegen";
+  form.append(heading);
+  if (copySource) form.append(text("p", "Die Angaben sind vorausgefüllt. Erst das Anlegen erzeugt eine neue Mission; die ursprüngliche Mission bleibt unverändert.", "status-card"));
+  form.append(summary, titleField.wrapper, outcomeField.wrapper, constraintsField.wrapper, criteria, save);
+  if (copySource) {
+    const cancel = createButton("Übernahme abbrechen", "button button--text");
+    cancel.addEventListener("click", () => { missionState = { ...missionState, status: "detail", mission: copySource, draft: null }; renderMissionDetail(copySource); setMissionMessage("Übernahme abgebrochen. Die ursprüngliche Mission blieb unverändert."); });
+    form.append(cancel);
+  }
   form.addEventListener("submit", async (event) => { event.preventDefault(); await saveMission(form, summary, input, mission); });
   elements.missionView.replaceChildren(form); heading.focus();
 }
@@ -126,7 +134,7 @@ async function saveMission(form, summary, input, mission) {
       ? await apiRequest(`/api/missions/${encodeURIComponent(mission.id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mission: input, expectedRevision: mission.revision }) })
       : await apiRequest("/api/missions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
     missionState = { ...missionState, status: "detail", mission: payload.mission, draft: null };
-    window.location.hash = `mission=${encodeURIComponent(payload.mission.id)}`; renderMissionDetail(payload.mission); setMissionMessage("Missionsakte gespeichert.");
+    history.pushState(null, "", `#mission=${encodeURIComponent(payload.mission.id)}`); lastRoutedHref = window.location.href; renderMissionDetail(payload.mission); setMissionMessage("Missionsakte gespeichert.");
   } catch (error) {
     missionState.status = error.code === "REVISION_CONFLICT" ? "conflict" : "editing";
     const message = error.code === "REVISION_CONFLICT" ? "Nicht gespeichert: Die Akte wurde inzwischen geändert. Deine Eingaben bleiben erhalten. Lade die Akte neu, um zu vergleichen." : error.status === 413 ? "Die Eingabe ist zu groß und wurde nicht gespeichert." : "Die Änderung konnte nicht gespeichert werden. Deine Eingaben bleiben erhalten; bitte versuche es erneut.";
@@ -151,7 +159,8 @@ function renderMissionDetail(mission) {
   }
   const actions = document.createElement("div"); actions.className = "mission-actions";
   if (mission.status !== "completed") { const edit = createButton("Missionsakte bearbeiten"); edit.addEventListener("click", () => renderMissionForm(missionInput(mission), mission)); actions.append(edit); const next = mission.status === "draft" ? "ready" : "completed"; const transition = createButton(next === "ready" ? "Als bereit markieren" : "Abschluss dokumentieren", "button button--secondary"); transition.addEventListener("click", () => next === "completed" ? renderCompletionForm(mission) : transitionMission(mission, next)); actions.append(transition); }
-  const board = createButton("Zur Missionsübersicht", "button button--text"); board.addEventListener("click", () => { history.pushState(null, "", location.pathname + location.search); missionState = { ...missionState, status: "board", mission: null, draft: null }; renderMissionOverview({ focus: true }); }); actions.append(board);
+  const copy = createButton("Als neuen Entwurf übernehmen", "button button--secondary"); copy.addEventListener("click", () => { missionState.status = "copying"; renderMissionForm(missionInput(mission), null, mission); }); actions.append(copy);
+  const board = createButton("Zur Missionsübersicht", "button button--text"); board.addEventListener("click", () => { history.pushState(null, "", location.pathname + location.search); lastRoutedHref = window.location.href; missionState = { ...missionState, status: "board", mission: null, draft: null }; renderMissionOverview({ focus: true }); }); actions.append(board);
   box.append(actions); elements.missionView.replaceChildren(box); heading.focus();
 }
 
@@ -615,8 +624,10 @@ elements.createMission.addEventListener("click", () => {
 });
 elements.exportMissions.addEventListener("click", exportMissions);
 elements.previewRestore.addEventListener("click", previewRestore);
-window.addEventListener("hashchange", () => {
+function routeLocationChange() {
   if (state.status !== "ready") return;
+  if (window.location.href === lastRoutedHref) return;
+  lastRoutedHref = window.location.href;
   if (window.location.hash.startsWith("#mission=")) {
     locallySharedHash = null;
     loadMissionFromHash();
@@ -630,6 +641,9 @@ window.addEventListener("hashchange", () => {
   restoreSharedCell({ clearMissing: true });
   render();
   renderMissionOverview();
-});
+}
+
+window.addEventListener("popstate", routeLocationChange);
+window.addEventListener("hashchange", routeLocationChange);
 
 loadTeam();
