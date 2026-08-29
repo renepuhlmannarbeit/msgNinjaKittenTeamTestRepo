@@ -159,8 +159,9 @@ test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async (
     await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
     await page.getByLabel("Titel").fill(title);
     await page.getByLabel("Gewünschtes Ergebnis").fill(outcome);
-    await page.getByLabel("Randbedingungen").fill("Keine");
-    await page.getByLabel("Kriterium 1").fill("Geprüft");
+  await page.getByLabel("Randbedingungen").fill("Keine");
+  await page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)").fill(`Fachlich-${marker}\nSchnell`);
+  await page.getByLabel("Kriterium 1").fill("Geprüft");
     await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
     await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
   }
@@ -200,6 +201,8 @@ test("Missionsübersicht zeigt Kitten und sucht gemeinsam nach Name, Rolle und S
   const item = page.locator(".mission-list__item", { hasText: title });
   await expect(item).toContainText("POwni (Produktstrategie)");
   await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill("Produktstrategie");
+  await expect(item).toBeVisible();
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(`fachlich-${marker}`);
   await expect(item).toBeVisible();
   await page.getByLabel("Entwurf").uncheck();
   await expect(item).toHaveCount(0);
@@ -316,7 +319,7 @@ test("Validierung erhält Eingaben; Export und zweistufiger Restore bleiben zug�
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Missionsakten exportieren" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("missions-v2.json");
+  expect(download.suggestedFilename()).toBe("missions-v3.json");
   const exportPath = await download.path();
   await page.setInputFiles("#restore-file", exportPath);
   await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
@@ -376,7 +379,7 @@ test("Restore lehnt ungültige, zu große und neuere Sicherungen ohne Übernahme
   await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
   await expect(page.locator("#mission-error")).toContainText("zu groß");
 
-  const future = { schemaVersion: 3, storeRevision: 0, missions: [] };
+  const future = { schemaVersion: 4, storeRevision: 0, missions: [] };
   await page.setInputFiles("#restore-file", { name: "zukunft.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(future)) });
   await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
   await expect(page.locator("#mission-error")).toContainText("nicht unterstützte neuere Version");

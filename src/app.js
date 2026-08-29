@@ -81,7 +81,7 @@ async function apiRequest(path, options = {}) {
 }
 
 function missionInput(mission = {}) {
-  return { title: mission.title || "", outcome: mission.outcome || "", constraints: mission.constraints || "", criteria: [...(mission.criteria || [""])], agentIds: [...(mission.agentIds || state.selectedIds)] };
+  return { title: mission.title || "", outcome: mission.outcome || "", constraints: mission.constraints || "", criteria: [...(mission.criteria || [""])], agentIds: [...(mission.agentIds || state.selectedIds)], tags: [...(mission.tags || [])] };
 }
 
 function setMissionMessage(message, error = false) {
@@ -105,6 +105,8 @@ function renderMissionForm(input, mission = null, copySource = null) {
   const titleField = field("Titel", "mission-title-input", input.title);
   const outcomeField = field("Gewünschtes Ergebnis", "mission-outcome", input.outcome, "textarea");
   const constraintsField = field("Randbedingungen", "mission-constraints", input.constraints, "textarea");
+  const tagsField = field("Tags (eine Klartextangabe pro Zeile, optional)", "mission-tags", input.tags.join("\n"), "textarea"); tagsField.input.rows = 3;
+  tagsField.input.addEventListener("input", () => { input.tags = tagsField.input.value.split(/\r?\n/).filter((tag) => tag.trim() !== ""); });
   const criteria = document.createElement("fieldset"); criteria.id = "mission-criteria";
   criteria.append(text("legend", "Überprüfbare Akzeptanzkriterien"));
   const criteriaList = document.createElement("div"); criteriaList.className = "criteria-list";
@@ -127,7 +129,7 @@ function renderMissionForm(input, mission = null, copySource = null) {
   const save = document.createElement("button"); save.className = "button"; save.type = "submit"; save.textContent = mission ? "Missionsakte speichern" : copySource ? "Neuen Entwurf anlegen" : "Missionsakte anlegen";
   form.append(heading);
   if (copySource) form.append(text("p", "Die Angaben sind vorausgefüllt. Erst das Anlegen erzeugt eine neue Mission; die ursprüngliche Mission bleibt unverändert.", "status-card"));
-  form.append(summary, titleField.wrapper, outcomeField.wrapper, constraintsField.wrapper, criteria, save);
+  form.append(summary, titleField.wrapper, outcomeField.wrapper, constraintsField.wrapper, tagsField.wrapper, criteria, save);
   if (copySource) {
     const cancel = createButton("Übernahme abbrechen", "button button--text");
     cancel.addEventListener("click", () => { missionState = { ...missionState, status: "detail", mission: copySource, draft: null }; renderMissionDetail(copySource); setMissionMessage("Übernahme abgebrochen. Die ursprüngliche Mission blieb unverändert."); });
@@ -141,7 +143,9 @@ function validateDraft(input, form, summary) {
   form.querySelectorAll("[aria-invalid]").forEach((node) => node.removeAttribute("aria-invalid"));
   const invalid = [];
   [["mission-title-input", input.title], ["mission-outcome", input.outcome], ["mission-constraints", input.constraints], ...input.criteria.map((value, index) => [`mission-criterion-${index}`, value])].forEach(([id, value]) => { if (!value.trim()) { form.querySelector(`#${id}`)?.setAttribute("aria-invalid", "true"); invalid.push(id); } });
-  summary.hidden = invalid.length === 0; summary.textContent = invalid.length ? "Bitte korrigiere die markierten Angaben. Alle Felder und Kriterien sind erforderlich." : "";
+  const tags = input.tags.map((tag) => tag.trim());
+  if (tags.length > 5 || tags.some((tag) => !tag || tag.length > 24) || new Set(tags.map((tag) => tag.toLocaleLowerCase("de"))).size !== tags.length) { form.querySelector("#mission-tags")?.setAttribute("aria-invalid", "true"); invalid.push("mission-tags"); }
+  summary.hidden = invalid.length === 0; summary.textContent = invalid.length ? "Bitte korrigiere die markierten Angaben. Titel, Ergebnis, Randbedingungen und Kriterien sind erforderlich; Tags sind optional, eindeutig und höchstens 24 Zeichen lang." : "";
   if (invalid.length) summary.focus(); return invalid.length === 0;
 }
 
@@ -166,7 +170,7 @@ function renderMissionDetail(mission) {
   const heading = text("h3", mission.title); heading.id = "mission-title"; heading.tabIndex = -1;
   const agents = mission.agentIds.map((id) => state.members.find((member) => member.id === id)?.name || id);
   const list = document.createElement("ol"); mission.criteria.forEach((item) => list.append(text("li", item)));
-  box.append(heading, text("p", `Status: ${statusLabels[mission.status]}`, "mission-status"), text("p", `Version ${mission.revision}`, "mission-meta"), text("h4", "Geplantes Ergebnis"), text("p", mission.outcome), text("h4", "Arbeitszelle"), text("p", agents.join(", ")), text("h4", "Akzeptanzkriterien"), list, text("h4", "Randbedingungen"), text("p", mission.constraints));
+  box.append(heading, text("p", `Status: ${statusLabels[mission.status]}`, "mission-status"), text("p", `Version ${mission.revision}`, "mission-meta"), text("h4", "Geplantes Ergebnis"), text("p", mission.outcome), text("h4", "Arbeitszelle"), text("p", agents.join(", ")), text("h4", "Akzeptanzkriterien"), list, text("h4", "Tags"), text("p", mission.tags.length ? mission.tags.join(", ") : "Keine Tags"), text("h4", "Randbedingungen"), text("p", mission.constraints));
   if (mission.status === "completed") {
     box.append(text("h4", "Tatsächlicher Abschluss"));
     if (mission.completion) {
@@ -222,7 +226,7 @@ function normalizedMissionQuery(value) {
 function filteredMissions() {
   const query = normalizedMissionQuery(missionState.query);
   return missionState.missions.filter((mission) => {
-    const haystack = normalizedMissionQuery(`${mission.title} ${mission.outcome} ${mission.agents.map(({ name, role }) => `${name} ${role}`).join(" ")}`);
+    const haystack = normalizedMissionQuery(`${mission.title} ${mission.outcome} ${mission.tags.join(" ")} ${mission.agents.map(({ name, role }) => `${name} ${role}`).join(" ")}`);
     return missionState.statuses.has(mission.status) && (!query || haystack.includes(query));
   });
 }
@@ -256,11 +260,11 @@ function drawMissionOverview({ focus = false } = {}) {
     for (const mission of shown) {
       const item = document.createElement("li"); item.className = "mission-list__item";
       const title = text("h4", mission.title); const outcome = text("p", mission.outcome);
-      const agents = text("p", `Kitten: ${mission.agents.map(({ name, role }) => `${name} (${role})`).join(", ")}`, "mission-agents");
+      const agents = text("p", `Kitten: ${mission.agents.map(({ name, role }) => `${name} (${role})`).join(", ")}`, "mission-agents"); const tags = text("p", mission.tags.length ? `Tags: ${mission.tags.join(", ")}` : "Tags: keine", "mission-meta");
       const status = text("p", `Status: ${statusLabels[mission.status]}`, "mission-status");
       const updated = text("p", `Aktualisiert: ${new Intl.DateTimeFormat("de", { dateStyle: "medium", timeStyle: "short" }).format(new Date(mission.updatedAt))}`, "mission-meta");
       const open = createButton(`${mission.title} öffnen`, "button button--secondary"); open.addEventListener("click", () => { location.hash = `mission=${encodeURIComponent(mission.id)}`; });
-      item.append(title, outcome, agents, status, updated, open); list.append(item);
+      item.append(title, outcome, agents, tags, status, updated, open); list.append(item);
     }
     listRegion.append(list);
   }
@@ -293,7 +297,7 @@ async function loadMissionFromHash() {
 }
 
 async function exportMissions() {
-  try { const response = await fetch("/api/missions-export"); if (!response.ok) throw new Error(); const blob = await response.blob(); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "missions-v2.json"; link.click(); URL.revokeObjectURL(link.href); setMissionMessage("Missionsakten exportiert."); }
+  try { const response = await fetch("/api/missions-export"); if (!response.ok) throw new Error(); const blob = await response.blob(); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "missions-v3.json"; link.click(); URL.revokeObjectURL(link.href); setMissionMessage("Missionsakten exportiert."); }
   catch { setMissionMessage("Missionsakten konnten nicht exportiert werden.", true); }
 }
 

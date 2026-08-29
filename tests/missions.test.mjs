@@ -9,10 +9,11 @@ import { MAX_DOCUMENT_BYTES, MissionError, canonicalDocument, createMission, mis
 import { createAppServer } from "../scripts/server.mjs";
 
 const knownIds = new Set(["backendi", "fronti", "testihesti", "devheavy"]);
-const input = { title: "Missionsakte", outcome: "Ein prüfbares Ergebnis", constraints: "Nur lokal", criteria: ["API-Test ist grün"], agentIds: ["backendi"] };
+const input = { title: "Missionsakte", outcome: "Ein prüfbares Ergebnis", constraints: "Nur lokal", criteria: ["API-Test ist grün"], agentIds: ["backendi"], tags: [] };
 const completion = { summary: "Release erfolgreich geprüft", evidence: ["PR #42", "npm test (grün)"] };
 
-function asV1(mission) { const { completion: ignored, ...legacy } = mission; return legacy; }
+function asV1(mission) { const { completion: ignored, tags: ignoredTags, ...legacy } = mission; return legacy; }
+function asV2(mission) { const { tags: ignored, ...legacy } = mission; return legacy; }
 
 function code(expected) { return (error) => error instanceof MissionError && error.code === expected; }
 
@@ -64,14 +65,15 @@ test("Listenvertrag ergänzt zugeordnete Kitten aus dem Teamverzeichnis", () => 
   assert.throws(() => missionListItem(mission, new Map()), code("UNKNOWN_AGENT"));
 });
 
-test("Schema v1 migriert verlustfrei; Schema v2 validiert Abschlussangaben und neuere Versionen", () => {
+test("Schema v1 und v2 migrieren verlustfrei mit leeren Tags; Schema v3 validiert Tags", () => {
   const mission = createMission(input, knownIds, "2026-08-27T00:00:00.000Z", "abcdefghijklmnop");
   const document = { schemaVersion: 1, storeRevision: 1, missions: [asV1(mission)] };
   const migrated = validateDocument(document, knownIds);
-  assert.equal(migrated.schemaVersion, 2); assert.deepEqual(migrated.missions[0], mission);
+  assert.equal(migrated.schemaVersion, 3); assert.deepEqual(migrated.missions[0], mission);
   const completed = transitionMission(transitionMission(mission, "ready", 1), "completed", 2, completion);
-  assert.deepEqual(validateDocument({ schemaVersion: 2, storeRevision: 2, missions: [completed] }, knownIds).missions[0], completed);
-  assert.throws(() => validateDocument({ ...document, schemaVersion: 3 }, knownIds), code("UNSUPPORTED_VERSION"));
+  assert.deepEqual(validateDocument({ schemaVersion: 2, storeRevision: 2, missions: [asV2(completed)] }, knownIds).missions[0], completed);
+  assert.throws(() => createMission({ ...input, tags: ["Release", "release"] }, knownIds), code("INVALID_DATA"));
+  assert.throws(() => validateDocument({ ...document, schemaVersion: 4 }, knownIds), code("UNSUPPORTED_VERSION"));
   assert.throws(() => validateDocument({ ...document, surprise: true }, knownIds), code("INVALID_DATA"));
 });
 
@@ -122,7 +124,7 @@ test("Fault Injection an Write-, Sync-, Rename- und Nachlesegrenzen bewahrt den 
 test("Dokumentgrenze wird zentral für validierte Store-Kandidaten erzwungen", () => {
   const mission = createMission({ ...input, outcome: "x".repeat(2000), constraints: "y".repeat(4000), criteria: Array(5).fill("z".repeat(500)) }, knownIds, "2026-08-27T00:00:00.000Z", "abcdefghijklmnop");
   const missions = Array.from({ length: 100 }, (_, index) => ({ ...mission, id: `mission-${String(index).padStart(8, "0")}` }));
-  const oversized = { schemaVersion: 2, storeRevision: 1, missions };
+  const oversized = { schemaVersion: 3, storeRevision: 1, missions };
   assert.ok(Buffer.byteLength(canonicalDocument(oversized)) > MAX_DOCUMENT_BYTES);
   assert.throws(() => validateDocument(oversized, knownIds), code("LIMIT_EXCEEDED"));
 });
@@ -137,13 +139,13 @@ test("lokale API liefert stabile Fehlercodes für Create, Get und Konflikt", asy
   const listed = await (await fetch(`${base}/api/missions`)).json();
   assert.deepEqual(listed.missions.map(({ id }) => id).sort(), [second.mission.id, mission.id].sort());
   assert.ok(listed.missions[0].updatedAt >= listed.missions[1].updatedAt);
-  assert.deepEqual(Object.keys(listed.missions[0]).sort(), ["agents", "id", "outcome", "status", "title", "updatedAt"]);
+  assert.deepEqual(Object.keys(listed.missions[0]).sort(), ["agents", "id", "outcome", "status", "tags", "title", "updatedAt"]);
   assert.deepEqual(listed.missions[0].agents, [{ id: "backendi", name: "Backendi", role: "Backend-Entwicklung" }]);
   const loaded = await fetch(`${base}/api/missions/${mission.id}`); assert.equal(loaded.status, 200);
   const beforeRejectedRestore = await (await fetch(`${base}/api/missions-export`)).text();
   for (const [body, expectedStatus, expectedCode] of [
     ["{", 400, "INVALID_JSON"],
-    [JSON.stringify({ schemaVersion: 3, storeRevision: 0, missions: [] }), 422, "UNSUPPORTED_VERSION"],
+    [JSON.stringify({ schemaVersion: 4, storeRevision: 0, missions: [] }), 422, "UNSUPPORTED_VERSION"],
     [JSON.stringify({ schemaVersion: 1, storeRevision: 0, missions: [{ ...asV1(mission), agentIds: ["unknown"] }] }), 422, "UNKNOWN_AGENT"],
     ["x".repeat(128 * 1024 + 1), 413, "REQUEST_TOO_LARGE"],
   ]) {
