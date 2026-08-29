@@ -148,6 +148,7 @@ test("Missionsakte wird erstellt, über Hash fortgesetzt und vorwärts abgeschlo
 
 test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async ({ page }) => {
   const marker = `Uebersicht-${Date.now()}`;
+  const tagMarker = Date.now().toString(36);
   const firstTitle = `Erste ${marker}`;
   const secondTitle = `Zweite ${marker}`;
   await page.setViewportSize({ width: 320, height: 800 });
@@ -160,7 +161,7 @@ test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async (
     await page.getByLabel("Titel").fill(title);
     await page.getByLabel("Gewünschtes Ergebnis").fill(outcome);
   await page.getByLabel("Randbedingungen").fill("Keine");
-  await page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)").fill(`Fachlich-${marker}\nSchnell`);
+  await page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)").fill(`Fachlich-${tagMarker}\nSchnell`);
   await page.getByLabel("Kriterium 1").fill("Geprüft");
     await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
     await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
@@ -173,6 +174,8 @@ test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async (
   await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(`Alpha-${marker}`);
   await expect(page.locator("#mission-list-summary")).toContainText("1 von");
   await expect(items).toHaveCount(1);
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(`fachlich-${tagMarker}`);
+  await expect(items).toHaveCount(2);
   await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(marker);
   await page.getByLabel("Abgeschlossen").uncheck();
   await expect(items).toHaveCount(2);
@@ -194,6 +197,7 @@ test("Missionsübersicht zeigt Kitten und sucht gemeinsam nach Name, Rolle und S
   await page.getByLabel("Titel").fill(title);
   await page.getByLabel("Gewünschtes Ergebnis").fill("Zuordnung sichtbar");
   await page.getByLabel("Randbedingungen").fill("Keine");
+  await page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)").fill("fachlich");
   await page.getByLabel("Kriterium 1").fill("Suche findet die Mission");
   await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
   await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
@@ -202,7 +206,7 @@ test("Missionsübersicht zeigt Kitten und sucht gemeinsam nach Name, Rolle und S
   await expect(item).toContainText("POwni (Produktstrategie)");
   await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill("Produktstrategie");
   await expect(item).toBeVisible();
-  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(`fachlich-${marker}`);
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill("fachlich");
   await expect(item).toBeVisible();
   await page.getByLabel("Entwurf").uncheck();
   await expect(item).toHaveCount(0);

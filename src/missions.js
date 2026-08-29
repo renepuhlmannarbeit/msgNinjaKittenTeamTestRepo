@@ -49,6 +49,12 @@ function text(value, label, maximum, { allowEmpty = false } = {}) {
   return normalized;
 }
 
+function tagComparisonKey(value) {
+  // Uppercase before lowercasing covers multi-character Unicode mappings such
+  // as \u00df -> SS; the dotted-I mark is ignored for case-insensitive matching.
+  return value.normalize("NFKC").toUpperCase().toLowerCase().replace(/\u0307/g, "");
+}
+
 function positiveInteger(value, label, { allowZero = false } = {}) {
   if (!Number.isSafeInteger(value) || value < (allowZero ? 0 : 1)) {
     fail("INVALID_DATA", `${label} must be a ${allowZero ? "non-negative" : "positive"} integer.`);
@@ -79,7 +85,7 @@ export function validateMissionInput(raw, knownIds) {
   }
   if (!Array.isArray(input.tags) || input.tags.length > MAX_TAGS) fail("INVALID_DATA", `tags must contain 0 to ${MAX_TAGS} entries.`);
   const tags = input.tags.map((tag) => text(tag, "Tag", MAX_TAG_LENGTH));
-  if (new Set(tags.map((tag) => tag.toLocaleLowerCase("de"))).size !== tags.length) fail("INVALID_DATA", "tags must be unique without regard to case.");
+  if (new Set(tags.map(tagComparisonKey)).size !== tags.length) fail("INVALID_DATA", "tags must be unique without regard to case.");
   return Object.freeze({
     title: text(input.title, "Title", MAX_TITLE_LENGTH),
     outcome: text(input.outcome, "Outcome", MAX_OUTCOME_LENGTH),

@@ -73,6 +73,8 @@ test("Schema v1 und v2 migrieren verlustfrei mit leeren Tags; Schema v3 validier
   const completed = transitionMission(transitionMission(mission, "ready", 1), "completed", 2, completion);
   assert.deepEqual(validateDocument({ schemaVersion: 2, storeRevision: 2, missions: [asV2(completed)] }, knownIds).missions[0], completed);
   assert.throws(() => createMission({ ...input, tags: ["Release", "release"] }, knownIds), code("INVALID_DATA"));
+  assert.throws(() => createMission({ ...input, tags: ["Stra\u00dfe", "STRASSE"] }, knownIds), code("INVALID_DATA"));
+  assert.throws(() => createMission({ ...input, tags: ["\u0130", "i"] }, knownIds), code("INVALID_DATA"));
   assert.throws(() => validateDocument({ ...document, schemaVersion: 4 }, knownIds), code("UNSUPPORTED_VERSION"));
   assert.throws(() => validateDocument({ ...document, surprise: true }, knownIds), code("INVALID_DATA"));
 });
@@ -87,7 +89,7 @@ test("Store persistiert über Neustart, serialisiert Revisionen und schützt Res
   await assert.rejects(restarted.restore("invented", before.storeRevision), (error) => error.code === "PREVIEW_MISMATCH");
   assert.deepEqual(restarted.snapshot(), before);
   await restarted.restore(preview.previewToken, before.storeRevision);
-  assert.equal(restarted.snapshot().missions.length, 0); assert.equal(restarted.snapshot().storeRevision, before.storeRevision + 1);
+  assert.equal(restarted.snapshot().missions.length, 0); assert.equal(restarted.snapshot().storeRevision, incoming.storeRevision);
   assert.deepEqual(JSON.parse(await readFile(file, "utf8")), restarted.snapshot());
   await assert.rejects(restarted.restore(preview.previewToken, restarted.snapshot().storeRevision), (error) => error.code === "PREVIEW_MISMATCH");
 });
@@ -165,13 +167,14 @@ test("lokale API liefert stabile Fehlercodes für Create, Get und Konflikt", asy
   assert.equal((await fetch(`${base}/api/missions/not-valid`)).status, 404);
   const exported = await fetch(`${base}/api/missions-export`); const exportBytes = await exported.text();
   assert.equal(exportBytes, canonicalDocument(JSON.parse(exportBytes)));
-  const incoming = { schemaVersion: 1, storeRevision: 0, missions: [] };
-  const previewResponse = await fetch(`${base}/api/missions-restore/preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(incoming) });
+  const exportedDocument = JSON.parse(exportBytes);
+  const previewResponse = await fetch(`${base}/api/missions-restore/preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(exportedDocument) });
   const { preview } = await previewResponse.json();
   const withoutPreview = await fetch(`${base}/api/missions-restore/apply`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ previewToken: "invented", expectedStoreRevision: preview.currentStoreRevision }) });
   assert.equal(withoutPreview.status, 409);
   const applied = await fetch(`${base}/api/missions-restore/apply`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ previewToken: preview.previewToken, expectedStoreRevision: preview.currentStoreRevision }) });
   assert.equal(applied.status, 200);
+  assert.deepEqual((await applied.json()).document, exportedDocument);
   const reused = await fetch(`${base}/api/missions-restore/apply`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ previewToken: preview.previewToken, expectedStoreRevision: preview.currentStoreRevision + 1 }) });
   assert.equal(reused.status, 409);
 });

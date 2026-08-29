@@ -144,7 +144,8 @@ function validateDraft(input, form, summary) {
   const invalid = [];
   [["mission-title-input", input.title], ["mission-outcome", input.outcome], ["mission-constraints", input.constraints], ...input.criteria.map((value, index) => [`mission-criterion-${index}`, value])].forEach(([id, value]) => { if (!value.trim()) { form.querySelector(`#${id}`)?.setAttribute("aria-invalid", "true"); invalid.push(id); } });
   const tags = input.tags.map((tag) => tag.trim());
-  if (tags.length > 5 || tags.some((tag) => !tag || tag.length > 24) || new Set(tags.map((tag) => tag.toLocaleLowerCase("de"))).size !== tags.length) { form.querySelector("#mission-tags")?.setAttribute("aria-invalid", "true"); invalid.push("mission-tags"); }
+  const tagKeys = tags.map((tag) => tag.normalize("NFKC").toUpperCase().toLowerCase().replace(/\u0307/g, ""));
+  if (tags.length > 5 || tags.some((tag) => !tag || tag.length > 24) || new Set(tagKeys).size !== tags.length) { form.querySelector("#mission-tags")?.setAttribute("aria-invalid", "true"); invalid.push("mission-tags"); }
   summary.hidden = invalid.length === 0; summary.textContent = invalid.length ? "Bitte korrigiere die markierten Angaben. Titel, Ergebnis, Randbedingungen und Kriterien sind erforderlich; Tags sind optional, eindeutig und höchstens 24 Zeichen lang." : "";
   if (invalid.length) summary.focus(); return invalid.length === 0;
 }

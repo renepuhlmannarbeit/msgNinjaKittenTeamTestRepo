@@ -82,11 +82,11 @@ export class MissionStore {
       if (expectedStoreRevision !== this.#document.storeRevision) throw Object.assign(new Error("Store revision does not match."), { code: "REVISION_CONFLICT", details: { currentRevision: this.#document.storeRevision } });
       const preview = this.#previews.get(previewToken);
       if (!preview || preview.expiresAt <= Date.now() || preview.storeRevision !== this.#document.storeRevision) throw Object.assign(new Error("Restore preview is missing or stale."), { code: "PREVIEW_MISMATCH" });
-      this.#previews.delete(previewToken);
       const incoming = preview.document;
-      const next = Object.freeze({ ...incoming, storeRevision: this.#document.storeRevision + 1 });
+      const next = incoming;
       await this.#replace(next);
       this.#document = next;
+      this.#previews.clear();
       return this.snapshot();
     });
   }
