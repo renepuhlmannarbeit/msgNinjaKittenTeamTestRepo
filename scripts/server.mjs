@@ -12,7 +12,7 @@ const MISSION_ID = /^[A-Za-z0-9_-]{16,64}$/;
 const routes = new Map([
   ["/", ["../index.html", "text/html; charset=utf-8"]], ["/index.html", ["../index.html", "text/html; charset=utf-8"]],
   ["/styles.css", ["../styles.css", "text/css; charset=utf-8"]], ["/src/app.js", ["../src/app.js", "text/javascript; charset=utf-8"]],
-  ["/src/domain.js", ["../src/domain.js", "text/javascript; charset=utf-8"]], ["/data/team.json", ["../data/team.json", "application/json; charset=utf-8"]],
+  ["/src/domain.js", ["../src/domain.js", "text/javascript; charset=utf-8"]], ["/src/tag-rules.js", ["../src/tag-rules.js", "text/javascript; charset=utf-8"]], ["/data/team.json", ["../data/team.json", "application/json; charset=utf-8"]],
 ]);
 
 function send(response, status, body, contentType = "application/json; charset=utf-8") {

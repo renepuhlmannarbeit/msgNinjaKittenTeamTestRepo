@@ -146,6 +146,49 @@ test("Missionsakte wird erstellt, über Hash fortgesetzt und vorwärts abgeschlo
   await expect(page.getByRole("button", { name: "Missionsakte bearbeiten" })).toHaveCount(0);
 });
 
+test("Tags folgen dem gemeinsamen Vertrag in Browser, Anzeige, Bearbeitung und Suche", async ({ page }) => {
+  const title = `Tag-Vertrag-${Date.now()}`;
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+  await page.getByLabel("Titel").fill(title);
+  await page.getByLabel("Gewünschtes Ergebnis").fill("Tags bleiben sichtbar");
+  await page.getByLabel("Randbedingungen").fill("Keine");
+  await page.getByLabel("Kriterium 1").fill("Prüfbar");
+  const tags = page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)");
+  await tags.fill("Release\nrelease");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await expect(page.locator("#mission-validation-summary")).toContainText("eindeutig ohne Unterschied bei Groß-/Kleinschreibung");
+  await expect(page.locator("#mission-validation-summary")).toBeFocused();
+  await expect(tags).toHaveValue("Release\nrelease");
+  await tags.fill("Ä\nA\u0308");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await expect(page.locator("#mission-validation-summary")).toContainText("eindeutig ohne Unterschied bei Groß-/Kleinschreibung");
+  await tags.fill("①\n1\nİ\ni");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await page.getByRole("button", { name: "Missionsakte bearbeiten" }).click();
+  await tags.fill("eins\nzwei\ndrei\nvier\nfünf\nsechs");
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
+  await expect(page.locator("#mission-validation-summary")).toContainText("höchstens fünf Tags");
+  await tags.fill("x".repeat(25));
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
+  await expect(page.locator("#mission-validation-summary")).toContainText("höchstens 24 Zeichen je Tag");
+  await tags.fill(" <b>x</b> ");
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
+  await expect(page.getByText("<b>x</b>", { exact: true })).toBeVisible();
+  await expect(page.locator("b")).toHaveCount(0);
+  await page.getByRole("button", { name: "Missionsakte bearbeiten" }).click();
+  await tags.fill("Erste Schreibweise");
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
+  await expect(page.getByText("Erste Schreibweise", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill("erste schreibweise");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Erste Schreibweise");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async ({ page }) => {
   const marker = `Uebersicht-${Date.now()}`;
   const tagMarker = Date.now().toString(36);

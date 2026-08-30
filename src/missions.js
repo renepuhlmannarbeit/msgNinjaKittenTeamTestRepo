@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { tagComparisonKey } from "./tag-rules.js";
 
 export const MISSION_SCHEMA_VERSION = 3;
 export const MAX_MISSIONS = 100;
@@ -47,12 +48,6 @@ function text(value, label, maximum, { allowEmpty = false } = {}) {
   if (!allowEmpty && normalized.length === 0) fail("INVALID_DATA", `${label} must not be empty.`);
   if (normalized.length > maximum) fail("LIMIT_EXCEEDED", `${label} exceeds ${maximum} characters.`);
   return normalized;
-}
-
-function tagComparisonKey(value) {
-  // Uppercase before lowercasing covers multi-character Unicode mappings such
-  // as \u00df -> SS; the dotted-I mark is ignored for case-insensitive matching.
-  return value.normalize("NFKC").toUpperCase().toLowerCase().replace(/\u0307/g, "");
 }
 
 function positiveInteger(value, label, { allowZero = false } = {}) {

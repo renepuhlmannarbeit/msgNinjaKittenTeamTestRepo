@@ -65,16 +65,18 @@ test("Listenvertrag ergänzt zugeordnete Kitten aus dem Teamverzeichnis", () => 
   assert.throws(() => missionListItem(mission, new Map()), code("UNKNOWN_AGENT"));
 });
 
-test("Schema v1 und v2 migrieren verlustfrei mit leeren Tags; Schema v3 validiert Tags", () => {
+test("Schema v1 und v2 migrieren verlustfrei mit leeren Tags; Schema v3 bewahrt den Tag-Vertrag", () => {
   const mission = createMission(input, knownIds, "2026-08-27T00:00:00.000Z", "abcdefghijklmnop");
   const document = { schemaVersion: 1, storeRevision: 1, missions: [asV1(mission)] };
   const migrated = validateDocument(document, knownIds);
   assert.equal(migrated.schemaVersion, 3); assert.deepEqual(migrated.missions[0], mission);
   const completed = transitionMission(transitionMission(mission, "ready", 1), "completed", 2, completion);
   assert.deepEqual(validateDocument({ schemaVersion: 2, storeRevision: 2, missions: [asV2(completed)] }, knownIds).missions[0], completed);
-  assert.throws(() => createMission({ ...input, tags: ["Release", "release"] }, knownIds), code("INVALID_DATA"));
-  assert.throws(() => createMission({ ...input, tags: ["Stra\u00dfe", "STRASSE"] }, knownIds), code("INVALID_DATA"));
-  assert.throws(() => createMission({ ...input, tags: ["\u0130", "i"] }, knownIds), code("INVALID_DATA"));
+  assert.deepEqual(createMission({ ...input, tags: [" Release ", "\u0130", "i", "\u2460", "1"] }, knownIds).tags, ["Release", "\u0130", "i", "\u2460", "1"]);
+  for (const tags of [["Release", "release"], ["Stra\u00dfe", "STRASSE"], ["\u00c4", "A\u0308"]]) assert.throws(() => createMission({ ...input, tags }, knownIds), code("INVALID_DATA"));
+  assert.throws(() => createMission({ ...input, tags: Array(6).fill("tag") }, knownIds), code("INVALID_DATA"));
+  assert.equal(createMission({ ...input, tags: ["x".repeat(24)] }, knownIds).tags[0], "x".repeat(24));
+  assert.throws(() => createMission({ ...input, tags: ["x".repeat(25)] }, knownIds), code("LIMIT_EXCEEDED"));
   assert.throws(() => validateDocument({ ...document, schemaVersion: 4 }, knownIds), code("UNSUPPORTED_VERSION"));
   assert.throws(() => validateDocument({ ...document, surprise: true }, knownIds), code("INVALID_DATA"));
 });
@@ -82,9 +84,9 @@ test("Schema v1 und v2 migrieren verlustfrei mit leeren Tags; Schema v3 validier
 test("Store persistiert über Neustart, serialisiert Revisionen und schützt Restore-Vorschau", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "missions-store-")); t.after(() => rm(directory, { recursive: true, force: true }));
   const file = join(directory, "missions.json"); const first = await new MissionStore(file, knownIds).initialize();
-  const created = await first.create(input); const updated = await first.update(created.id, { ...input, title: "Neu" }, 1);
+  const created = await first.create({ ...input, tags: ["Sichtbar"] }); const updated = await first.update(created.id, { ...input, title: "Neu", tags: ["Sichtbar"] }, 1);
   await assert.rejects(first.update(created.id, input, 1), (error) => error.code === "REVISION_CONFLICT");
-  const restarted = await new MissionStore(file, knownIds).initialize(); assert.equal(restarted.get(created.id).title, "Neu");
+  const restarted = await new MissionStore(file, knownIds).initialize(); assert.equal(restarted.get(created.id).title, "Neu"); assert.deepEqual(restarted.get(created.id).tags, ["Sichtbar"]);
   const before = restarted.snapshot(); const incoming = { schemaVersion: 1, storeRevision: 999, missions: [] }; const preview = restarted.preview(incoming);
   await assert.rejects(restarted.restore("invented", before.storeRevision), (error) => error.code === "PREVIEW_MISMATCH");
   assert.deepEqual(restarted.snapshot(), before);
@@ -92,6 +94,15 @@ test("Store persistiert über Neustart, serialisiert Revisionen und schützt Res
   assert.equal(restarted.snapshot().missions.length, 0); assert.equal(restarted.snapshot().storeRevision, incoming.storeRevision);
   assert.deepEqual(JSON.parse(await readFile(file, "utf8")), restarted.snapshot());
   await assert.rejects(restarted.restore(preview.previewToken, restarted.snapshot().storeRevision), (error) => error.code === "PREVIEW_MISMATCH");
+});
+
+test("Export, Restore in frischem Store und Neustart bewahren nichtleere Tags", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "missions-tags-export-")); t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = await new MissionStore(join(directory, "source.json"), knownIds).initialize();
+  await source.create({ ...input, tags: ["Erste Schreibweise"] });
+  const destinationFile = join(directory, "destination.json"); const destination = await new MissionStore(destinationFile, knownIds).initialize();
+  const preview = destination.preview(source.snapshot()); await destination.restore(preview.previewToken, preview.currentStoreRevision);
+  assert.deepEqual((await new MissionStore(destinationFile, knownIds).initialize()).snapshot().missions[0].tags, ["Erste Schreibweise"]);
 });
 
 test("Store stellt bei Schreibfehler und jedem offenen Recovery-Fenster bytegenau wieder her", async (t) => {
@@ -135,8 +146,12 @@ test("lokale API liefert stabile Fehlercodes für Create, Get und Konflikt", asy
   const directory = await mkdtemp(join(tmpdir(), "missions-api-")); t.after(() => rm(directory, { recursive: true, force: true }));
   const server = await createAppServer({ missionsFile: join(directory, "missions.json") }); await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve)); t.after(() => new Promise((resolve) => server.close(resolve)));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const createdResponse = await fetch(`${base}/api/missions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+  const taggedInput = { ...input, tags: [" Erste ", "\u0130", "i"] };
+  const createdResponse = await fetch(`${base}/api/missions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(taggedInput) });
   assert.equal(createdResponse.status, 201); const { mission } = await createdResponse.json();
+  assert.deepEqual(mission.tags, ["Erste", "\u0130", "i"]);
+  const editedResponse = await fetch(`${base}/api/missions/${mission.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ mission: { ...taggedInput, tags: ["Bearbeitet"] }, expectedRevision: mission.revision }) });
+  assert.equal(editedResponse.status, 200); assert.deepEqual((await editedResponse.json()).mission.tags, ["Bearbeitet"]);
   const second = await (await fetch(`${base}/api/missions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...input, title: "Zweite Mission" }) })).json();
   const listed = await (await fetch(`${base}/api/missions`)).json();
   assert.deepEqual(listed.missions.map(({ id }) => id).sort(), [second.mission.id, mission.id].sort());
@@ -158,11 +173,11 @@ test("lokale API liefert stabile Fehlercodes für Create, Get und Konflikt", asy
   }
   const conflict = await fetch(`${base}/api/missions/${mission.id}/status`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "ready", expectedRevision: 0 }) });
   assert.equal(conflict.status, 409); assert.equal((await conflict.json()).error.code, "REVISION_CONFLICT");
-  const readyResponse = await fetch(`${base}/api/missions/${mission.id}/status`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "ready", expectedRevision: 1 }) });
+  const readyResponse = await fetch(`${base}/api/missions/${mission.id}/status`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "ready", expectedRevision: 2 }) });
   assert.equal(readyResponse.status, 200);
-  const missingCompletion = await fetch(`${base}/api/missions/${mission.id}/status`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "completed", expectedRevision: 2 }) });
+  const missingCompletion = await fetch(`${base}/api/missions/${mission.id}/status`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "completed", expectedRevision: 3 }) });
   assert.equal(missingCompletion.status, 422); assert.equal((await missingCompletion.json()).error.code, "INVALID_DATA");
-  const completedResponse = await fetch(`${base}/api/missions/${mission.id}/status`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "completed", expectedRevision: 2, completion }) });
+  const completedResponse = await fetch(`${base}/api/missions/${mission.id}/status`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "completed", expectedRevision: 3, completion }) });
   assert.equal(completedResponse.status, 200); assert.deepEqual((await completedResponse.json()).mission.completion, completion);
   assert.equal((await fetch(`${base}/api/missions/not-valid`)).status, 404);
   const exported = await fetch(`${base}/api/missions-export`); const exportBytes = await exported.text();

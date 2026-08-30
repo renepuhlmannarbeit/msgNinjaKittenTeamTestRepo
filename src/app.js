@@ -11,6 +11,7 @@ import {
   toggleSelection,
   validateTeam,
 } from "./domain.js";
+import { tagComparisonKey } from "./tag-rules.js";
 
 const elements = {
   clearCell: document.querySelector("#clear-cell"),
@@ -144,9 +145,10 @@ function validateDraft(input, form, summary) {
   const invalid = [];
   [["mission-title-input", input.title], ["mission-outcome", input.outcome], ["mission-constraints", input.constraints], ...input.criteria.map((value, index) => [`mission-criterion-${index}`, value])].forEach(([id, value]) => { if (!value.trim()) { form.querySelector(`#${id}`)?.setAttribute("aria-invalid", "true"); invalid.push(id); } });
   const tags = input.tags.map((tag) => tag.trim());
-  const tagKeys = tags.map((tag) => tag.normalize("NFKC").toUpperCase().toLowerCase().replace(/\u0307/g, ""));
-  if (tags.length > 5 || tags.some((tag) => !tag || tag.length > 24) || new Set(tagKeys).size !== tags.length) { form.querySelector("#mission-tags")?.setAttribute("aria-invalid", "true"); invalid.push("mission-tags"); }
-  summary.hidden = invalid.length === 0; summary.textContent = invalid.length ? "Bitte korrigiere die markierten Angaben. Titel, Ergebnis, Randbedingungen und Kriterien sind erforderlich; Tags sind optional, eindeutig und höchstens 24 Zeichen lang." : "";
+  const tagKeys = tags.map(tagComparisonKey);
+  const tagError = tags.length > 5 ? "höchstens fünf Tags" : tags.some((tag) => tag.length > 24) ? "höchstens 24 Zeichen je Tag" : new Set(tagKeys).size !== tags.length ? "eindeutig ohne Unterschied bei Groß-/Kleinschreibung" : null;
+  if (tagError) { form.querySelector("#mission-tags")?.setAttribute("aria-invalid", "true"); invalid.push("mission-tags"); }
+  summary.hidden = invalid.length === 0; summary.textContent = invalid.length ? `Bitte korrigiere die markierten Angaben. Titel, Ergebnis, Randbedingungen und Kriterien sind erforderlich${tagError ? `; Tags: ${tagError}.` : ""}` : "";
   if (invalid.length) summary.focus(); return invalid.length === 0;
 }
 

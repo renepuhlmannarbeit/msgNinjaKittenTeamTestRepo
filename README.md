@@ -75,7 +75,7 @@ anderen Pfad setzen. Das Dokument hat exakt diese Hülle:
 }
 ```
 
-V2 akzeptiert nur exakt bekannte Felder und ausschließlich IDs aus
+Schema v3 akzeptiert nur exakt bekannte Felder und ausschließlich IDs aus
 `data/team.json`. Grenzen: 100 Akten, 1–4 eindeutige Agenten, 1–5 Kriterien,
 Titel 120, Ergebnis 2.000, Randbedingungen 4.000 und je Kriterium 500 Zeichen;
 Request und Restore-Dokument sind auf 128 KiB begrenzt. Es gibt in V1 keine
