@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
+import { tagComparisonKey } from "./tag-rules.js";
 
-export const MISSION_SCHEMA_VERSION = 2;
+export const MISSION_SCHEMA_VERSION = 3;
 export const MAX_MISSIONS = 100;
 export const MAX_DOCUMENT_BYTES = 128 * 1024;
 export const MAX_TITLE_LENGTH = 120;
@@ -9,6 +10,8 @@ export const MAX_CONSTRAINTS_LENGTH = 4000;
 export const MAX_CRITERION_LENGTH = 500;
 export const MAX_COMPLETION_SUMMARY_LENGTH = 2000;
 export const MAX_EVIDENCE_LENGTH = 500;
+export const MAX_TAGS = 5;
+export const MAX_TAG_LENGTH = 24;
 export const MISSION_STATUSES = Object.freeze(["draft", "ready", "completed"]);
 
 export class MissionError extends Error {
@@ -63,7 +66,7 @@ function isoDate(value, label) {
 
 export function validateMissionInput(raw, knownIds) {
   const input = plainObject(raw, "Mission input");
-  exactKeys(input, ["title", "outcome", "constraints", "criteria", "agentIds"], "Mission input");
+  exactKeys(input, ["title", "outcome", "constraints", "criteria", "agentIds", "tags"], "Mission input");
   if (!(knownIds instanceof Set)) fail("INVALID_ARGUMENT", "knownIds must be a Set.");
   if (!Array.isArray(input.agentIds) || input.agentIds.length < 1 || input.agentIds.length > 4) {
     fail("INVALID_DATA", "agentIds must contain 1 to 4 entries.");
@@ -75,12 +78,16 @@ export function validateMissionInput(raw, knownIds) {
   if (!Array.isArray(input.criteria) || input.criteria.length < 1 || input.criteria.length > 5) {
     fail("INVALID_DATA", "criteria must contain 1 to 5 entries.");
   }
+  if (!Array.isArray(input.tags) || input.tags.length > MAX_TAGS) fail("INVALID_DATA", `tags must contain 0 to ${MAX_TAGS} entries.`);
+  const tags = input.tags.map((tag) => text(tag, "Tag", MAX_TAG_LENGTH));
+  if (new Set(tags.map(tagComparisonKey)).size !== tags.length) fail("INVALID_DATA", "tags must be unique without regard to case.");
   return Object.freeze({
     title: text(input.title, "Title", MAX_TITLE_LENGTH),
     outcome: text(input.outcome, "Outcome", MAX_OUTCOME_LENGTH),
     constraints: text(input.constraints, "Constraints", MAX_CONSTRAINTS_LENGTH),
     criteria: Object.freeze(input.criteria.map((item) => text(item, "Criterion", MAX_CRITERION_LENGTH))),
     agentIds: Object.freeze(agentIds),
+    tags: Object.freeze(tags),
   });
 }
 
@@ -110,6 +117,7 @@ export function missionListItem(mission, teamById) {
     outcome: mission.outcome,
     status: mission.status,
     updatedAt: mission.updatedAt,
+    tags: mission.tags,
     agents: Object.freeze(agents),
   });
 }
@@ -148,7 +156,7 @@ export function transitionMission(current, nextStatus, expectedRevision, complet
 
 export function validateDocument(raw, knownIds) {
   const document = plainObject(raw, "Mission document");
-  if (![1, MISSION_SCHEMA_VERSION].includes(document.schemaVersion)) {
+  if (![1, 2, MISSION_SCHEMA_VERSION].includes(document.schemaVersion)) {
     fail(document.schemaVersion > MISSION_SCHEMA_VERSION ? "UNSUPPORTED_VERSION" : "INVALID_DATA", "Unsupported mission schema version.");
   }
   exactKeys(document, ["schemaVersion", "storeRevision", "missions"], "Mission document");
@@ -159,7 +167,7 @@ export function validateDocument(raw, knownIds) {
   const ids = new Set();
   const missions = document.missions.map((rawMission, index) => {
     const mission = plainObject(rawMission, `Mission ${index}`);
-    exactKeys(mission, document.schemaVersion === 1 ? ["id", "title", "outcome", "constraints", "criteria", "agentIds", "status", "revision", "createdAt", "updatedAt"] : ["id", "title", "outcome", "constraints", "criteria", "agentIds", "completion", "status", "revision", "createdAt", "updatedAt"], `Mission ${index}`);
+    exactKeys(mission, document.schemaVersion === 1 ? ["id", "title", "outcome", "constraints", "criteria", "agentIds", "status", "revision", "createdAt", "updatedAt"] : document.schemaVersion === 2 ? ["id", "title", "outcome", "constraints", "criteria", "agentIds", "completion", "status", "revision", "createdAt", "updatedAt"] : ["id", "title", "outcome", "constraints", "criteria", "agentIds", "tags", "completion", "status", "revision", "createdAt", "updatedAt"], `Mission ${index}`);
     const id = text(mission.id, "Mission id", 64);
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(id) || ids.has(id)) fail("INVALID_DATA", "Mission ids must be opaque and unique.");
     ids.add(id);
@@ -169,6 +177,7 @@ export function validateDocument(raw, knownIds) {
       constraints: mission.constraints,
       criteria: mission.criteria,
       agentIds: mission.agentIds,
+      tags: document.schemaVersion === MISSION_SCHEMA_VERSION ? mission.tags : [],
     }, knownIds);
     if (!MISSION_STATUSES.includes(mission.status)) fail("INVALID_DATA", "Mission status is invalid.");
     const completion = document.schemaVersion === 1 || mission.completion === null ? null : validateCompletion(mission.completion);

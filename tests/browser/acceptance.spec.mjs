@@ -146,8 +146,90 @@ test("Missionsakte wird erstellt, über Hash fortgesetzt und vorwärts abgeschlo
   await expect(page.getByRole("button", { name: "Missionsakte bearbeiten" })).toHaveCount(0);
 });
 
+test("Tags folgen dem gemeinsamen Vertrag in Browser, Anzeige, Bearbeitung und Suche", async ({ page }) => {
+  const title = `Tag-Case-${Date.now()}`;
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/#cell=deviheavy");
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+  await page.getByLabel("Titel").fill(title);
+  await page.getByLabel("Gewünschtes Ergebnis").fill("Tags ok");
+  await page.getByLabel("Randbedingungen").fill("Nur");
+  await page.getByLabel("Kriterium 1").fill("Test");
+  const tags = page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)");
+  await tags.fill("Release\nrelease");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await expect(page.locator("#mission-validation-summary")).toContainText("eindeutig ohne Unterschied bei Groß-/Kleinschreibung");
+  await expect(page.locator("#mission-validation-summary")).toBeFocused();
+  await expect(tags).toHaveValue("Release\nrelease");
+  await tags.fill("Ä\nA\u0308");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await expect(page.locator("#mission-validation-summary")).toContainText("eindeutig ohne Unterschied bei Groß-/Kleinschreibung");
+  await tags.fill("①\n1\nStraße\nİ\ni");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await page.getByRole("button", { name: "Missionsakte bearbeiten" }).click();
+  await tags.fill("eins\nzwei\ndrei\nvier\nfünf\nsechs");
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
+  await expect(page.locator("#mission-validation-summary")).toContainText("höchstens fünf Tags");
+  await tags.fill("x".repeat(25));
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
+  await expect(page.locator("#mission-validation-summary")).toContainText("höchstens 24 Zeichen je Tag");
+  await tags.fill(" <b>x</b> ");
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
+  await expect(page.getByText("<b>x</b>", { exact: true })).toBeVisible();
+  await expect(page.locator("b")).toHaveCount(0);
+  await page.getByRole("button", { name: "Missionsakte bearbeiten" }).click();
+  await tags.fill("Erste Schreibweise");
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
+  await expect(page.getByText("Erste Schreibweise", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Missionsakte bearbeiten" }).click();
+  await tags.fill("Straße\nÄ\nſ\nﬃ\nＡ");
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
+  await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
+  const missionSearch = page.getByRole("searchbox", { name: "Missionen durchsuchen" });
+  await missionSearch.fill("STRASSE");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Straße");
+  await missionSearch.fill("A\u0308");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Straße");
+  await missionSearch.fill("\u0308");
+  await expect(page.locator(".mission-list__item")).toHaveCount(0);
+  await missionSearch.fill("s");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("ſ");
+  await missionSearch.fill("ffi");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("ﬃ");
+  await missionSearch.fill("ａ");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Ａ");
+  for (const query of ["fb03", "u{fb", "\\u{fb03}", "17f", "2460"]) {
+    await missionSearch.fill(query);
+    await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(0);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("Missionssuche bewahrt die diakritika-unabhängigen allgemeinen Felder", async ({ page }) => {
+  const marker = Date.now().toString(36);
+  const title = `Über-${marker}`;
+  await page.goto("/#cell=deviheavy");
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+  await page.getByLabel("Titel").fill(title);
+  await page.getByLabel("Gewünschtes Ergebnis").fill(`Crème-${marker}`);
+  await page.getByLabel("Randbedingungen").fill("Keine");
+  await page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)").fill(`ﬃ-${marker}`);
+  await page.getByLabel("Kriterium 1").fill("Geprüft");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
+  const search = page.getByRole("searchbox", { name: "Missionen durchsuchen" });
+  await search.fill(`uber-${marker}`);
+  await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(1);
+  await search.fill(`creme-${marker}`);
+  await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(1);
+  await search.fill(`ffi-${marker}`);
+  await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(1);
+});
+
 test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async ({ page }) => {
   const marker = `Uebersicht-${Date.now()}`;
+  const tagMarker = Date.now().toString(36);
   const firstTitle = `Erste ${marker}`;
   const secondTitle = `Zweite ${marker}`;
   await page.setViewportSize({ width: 320, height: 800 });
@@ -159,8 +241,9 @@ test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async (
     await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
     await page.getByLabel("Titel").fill(title);
     await page.getByLabel("Gewünschtes Ergebnis").fill(outcome);
-    await page.getByLabel("Randbedingungen").fill("Keine");
-    await page.getByLabel("Kriterium 1").fill("Geprüft");
+  await page.getByLabel("Randbedingungen").fill("Keine");
+  await page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)").fill(`Fachlich-${tagMarker}\nSchnell`);
+  await page.getByLabel("Kriterium 1").fill("Geprüft");
     await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
     await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
   }
@@ -172,6 +255,10 @@ test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async (
   await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(`Alpha-${marker}`);
   await expect(page.locator("#mission-list-summary")).toContainText("1 von");
   await expect(items).toHaveCount(1);
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(`fachlich-${tagMarker}`);
+  await expect(items).toHaveCount(2);
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(`Alpha-${marker} Fachlich-${tagMarker}`);
+  await expect(items).toHaveCount(0);
   await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(marker);
   await page.getByLabel("Abgeschlossen").uncheck();
   await expect(items).toHaveCount(2);
@@ -193,6 +280,7 @@ test("Missionsübersicht zeigt Kitten und sucht gemeinsam nach Name, Rolle und S
   await page.getByLabel("Titel").fill(title);
   await page.getByLabel("Gewünschtes Ergebnis").fill("Zuordnung sichtbar");
   await page.getByLabel("Randbedingungen").fill("Keine");
+  await page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)").fill("fachlich");
   await page.getByLabel("Kriterium 1").fill("Suche findet die Mission");
   await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
   await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
@@ -200,6 +288,8 @@ test("Missionsübersicht zeigt Kitten und sucht gemeinsam nach Name, Rolle und S
   const item = page.locator(".mission-list__item", { hasText: title });
   await expect(item).toContainText("POwni (Produktstrategie)");
   await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill("Produktstrategie");
+  await expect(item).toBeVisible();
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill("fachlich");
   await expect(item).toBeVisible();
   await page.getByLabel("Entwurf").uncheck();
   await expect(item).toHaveCount(0);
@@ -316,7 +406,7 @@ test("Validierung erhält Eingaben; Export und zweistufiger Restore bleiben zug�
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Missionsakten exportieren" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("missions-v2.json");
+  expect(download.suggestedFilename()).toBe("missions-v3.json");
   const exportPath = await download.path();
   await page.setInputFiles("#restore-file", exportPath);
   await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
@@ -376,7 +466,7 @@ test("Restore lehnt ungültige, zu große und neuere Sicherungen ohne Übernahme
   await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
   await expect(page.locator("#mission-error")).toContainText("zu groß");
 
-  const future = { schemaVersion: 3, storeRevision: 0, missions: [] };
+  const future = { schemaVersion: 4, storeRevision: 0, missions: [] };
   await page.setInputFiles("#restore-file", { name: "zukunft.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(future)) });
   await page.getByRole("button", { name: "Wiederherstellung prüfen" }).click();
   await expect(page.locator("#mission-error")).toContainText("nicht unterstützte neuere Version");
