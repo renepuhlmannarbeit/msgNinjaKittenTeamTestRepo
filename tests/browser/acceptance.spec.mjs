@@ -189,6 +189,10 @@ test("Tags folgen dem gemeinsamen Vertrag in Browser, Anzeige, Bearbeitung und S
   const missionSearch = page.getByRole("searchbox", { name: "Missionen durchsuchen" });
   await missionSearch.fill("STRASSE");
   await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Straße");
+  await missionSearch.fill("A\u0308");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Straße");
+  await missionSearch.fill("\u0308");
+  await expect(page.locator(".mission-list__item")).toHaveCount(0);
   await missionSearch.fill("İ");
   await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("İ");
   await missionSearch.fill("ffi");
@@ -247,6 +251,8 @@ test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async (
   await expect(items).toHaveCount(1);
   await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(`fachlich-${tagMarker}`);
   await expect(items).toHaveCount(2);
+  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(`Alpha-${marker} Fachlich-${tagMarker}`);
+  await expect(items).toHaveCount(0);
   await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill(marker);
   await page.getByLabel("Abgeschlossen").uncheck();
   await expect(items).toHaveCount(2);

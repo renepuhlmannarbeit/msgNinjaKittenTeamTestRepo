@@ -228,7 +228,8 @@ function filteredMissions() {
   const generalQuery = normalizeQuery(query);
   return missionState.missions.filter((mission) => {
     const generalFields = [mission.title, mission.outcome, ...mission.agents.flatMap(({ name, role }) => [name, role])];
-    return missionState.statuses.has(mission.status) && (!query || generalFields.some((value) => normalizeQuery(value).includes(generalQuery)) || mission.tags.some((tag) => tagComparisonIncludes(tag, query)));
+    const matchesGeneralFields = generalQuery !== "" && generalFields.some((value) => normalizeQuery(value).includes(generalQuery));
+    return missionState.statuses.has(mission.status) && (!query || matchesGeneralFields || mission.tags.some((tag) => tagComparisonIncludes(tag, query)));
   });
 }
 
