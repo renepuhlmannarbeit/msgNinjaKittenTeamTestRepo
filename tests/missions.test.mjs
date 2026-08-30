@@ -18,9 +18,10 @@ function asV2(mission) { const { tags: ignored, ...legacy } = mission; return le
 
 function code(expected) { return (error) => error instanceof MissionError && error.code === expected; }
 
-test("Suchvergleich verwendet den gemeinsamen Tag-Schlüssel ohne türkische Sonderfaltung", () => {
-  assert.equal(tagComparisonIncludes("Straße", "STRASSE"), true);
-  assert.equal(tagComparisonIncludes("İ", "i"), false);
+test("Tag-Suchvergleich bewahrt Kompatibilitätszeichen und kanonische Grenzen", () => {
+  for (const [value, query] of [["Release", "release"], ["Straße", "STRASSE"], ["Ä", "A\u0308"]]) assert.equal(tagComparisonIncludes(value, query), true);
+  for (const [value, query] of [["İ", "i"], ["①", "1"], ["ſ", "s"], ["ﬃ", "ffi"]]) assert.equal(tagComparisonIncludes(value, query), false);
+  assert.equal(tagComparisonIncludes("ﬃ", "\\u{fb03}"), false);
 });
 
 function failOnceAt(operation, target, skip = 0) {
@@ -80,6 +81,7 @@ test("Schema v1 und v2 migrieren verlustfrei mit leeren Tags; Schema v3 bewahrt 
   assert.deepEqual(validateDocument({ schemaVersion: 2, storeRevision: 2, missions: [asV2(completed)] }, knownIds).missions[0], completed);
   assert.deepEqual(createMission({ ...input, tags: [" Release ", "\u0130", "i", "\u2460", "1"] }, knownIds).tags, ["Release", "\u0130", "i", "\u2460", "1"]);
   for (const tags of [["Release", "release"], ["Stra\u00dfe", "STRASSE"], ["\u00c4", "A\u0308"]]) assert.throws(() => createMission({ ...input, tags }, knownIds), code("INVALID_DATA"));
+  for (const tags of [["\u017f", "s"], ["ﬃ", "ffi"]]) assert.doesNotThrow(() => createMission({ ...input, tags }, knownIds));
   assert.throws(() => createMission({ ...input, tags: Array(6).fill("tag") }, knownIds), code("INVALID_DATA"));
   assert.equal(createMission({ ...input, tags: ["x".repeat(24)] }, knownIds).tags[0], "x".repeat(24));
   assert.throws(() => createMission({ ...input, tags: ["x".repeat(25)] }, knownIds), code("LIMIT_EXCEEDED"));

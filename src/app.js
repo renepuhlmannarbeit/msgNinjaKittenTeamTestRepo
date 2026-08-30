@@ -6,6 +6,7 @@ import {
   clearDiscovery,
   filterMembers,
   listExpertise,
+  normalizeQuery,
   restoreCell,
   serializeCell,
   toggleSelection,
@@ -224,9 +225,10 @@ async function transitionMission(mission, status, completion = null, context = {
 
 function filteredMissions() {
   const query = missionState.query.trim();
+  const generalQuery = normalizeQuery(query);
   return missionState.missions.filter((mission) => {
-    const fields = [mission.title, mission.outcome, ...mission.tags, ...mission.agents.flatMap(({ name, role }) => [name, role])];
-    return missionState.statuses.has(mission.status) && (!query || fields.some((value) => tagComparisonIncludes(value, query)));
+    const generalFields = [mission.title, mission.outcome, ...mission.agents.flatMap(({ name, role }) => [name, role])];
+    return missionState.statuses.has(mission.status) && (!query || generalFields.some((value) => normalizeQuery(value).includes(generalQuery)) || mission.tags.some((tag) => tagComparisonIncludes(tag, query)));
   });
 }
 

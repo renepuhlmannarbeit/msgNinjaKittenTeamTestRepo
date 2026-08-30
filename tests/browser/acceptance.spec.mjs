@@ -191,7 +191,30 @@ test("Tags folgen dem gemeinsamen Vertrag in Browser, Anzeige, Bearbeitung und S
   await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Straße");
   await missionSearch.fill("İ");
   await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("İ");
+  await missionSearch.fill("ffi");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("Missionssuche bewahrt die diakritika-unabhängigen allgemeinen Felder", async ({ page }) => {
+  const marker = Date.now().toString(36);
+  const title = `Über-${marker}`;
+  await page.goto("/#cell=deviheavy");
+  await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
+  await page.getByLabel("Titel").fill(title);
+  await page.getByLabel("Gewünschtes Ergebnis").fill(`Crème-${marker}`);
+  await page.getByLabel("Randbedingungen").fill("Keine");
+  await page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)").fill(`ﬃ-${marker}`);
+  await page.getByLabel("Kriterium 1").fill("Geprüft");
+  await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
+  await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
+  const search = page.getByRole("searchbox", { name: "Missionen durchsuchen" });
+  await search.fill(`uber-${marker}`);
+  await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(1);
+  await search.fill(`creme-${marker}`);
+  await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(1);
+  await search.fill(`ffi-${marker}`);
+  await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(0);
 });
 
 test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async ({ page }) => {

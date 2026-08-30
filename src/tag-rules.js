@@ -1,7 +1,12 @@
 export function tagComparisonKey(value) {
-  // NFC equates canonically identical spellings only. Uppercase before
-  // lowercasing maps ß to SS without applying compatibility folding.
-  return value.normalize("NFC").toUpperCase().toLowerCase();
+  // NFC equates canonical spellings only. Protect every compatibility
+  // character before case mapping: case mappings otherwise turn ſ into s and
+  // ﬃ into ffi even without an explicit NFKC/NFKD call.
+  return [...value.trim().normalize("NFC")].map((character) =>
+    character.normalize("NFKC") === character
+      ? character.toUpperCase().toLowerCase().replaceAll("\\", "\\\\")
+      : `\\u{${character.codePointAt(0).toString(16)}}`,
+  ).join("");
 }
 
 export function tagComparisonIncludes(value, query) {
