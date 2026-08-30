@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { MissionStore } from "../src/mission-store.js";
 import { MAX_DOCUMENT_BYTES, MissionError, canonicalDocument, createMission, missionListItem, transitionMission, updateMission, validateDocument } from "../src/missions.js";
+import { tagComparisonIncludes } from "../src/tag-rules.js";
 import { createAppServer } from "../scripts/server.mjs";
 
 const knownIds = new Set(["backendi", "fronti", "testihesti", "devheavy"]);
@@ -16,6 +17,11 @@ function asV1(mission) { const { completion: ignored, tags: ignoredTags, ...lega
 function asV2(mission) { const { tags: ignored, ...legacy } = mission; return legacy; }
 
 function code(expected) { return (error) => error instanceof MissionError && error.code === expected; }
+
+test("Suchvergleich verwendet den gemeinsamen Tag-Schlüssel ohne türkische Sonderfaltung", () => {
+  assert.equal(tagComparisonIncludes("Straße", "STRASSE"), true);
+  assert.equal(tagComparisonIncludes("İ", "i"), false);
+});
 
 function failOnceAt(operation, target, skip = 0) {
   let failed = false;

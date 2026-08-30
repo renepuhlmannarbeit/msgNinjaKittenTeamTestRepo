@@ -11,7 +11,7 @@ import {
   toggleSelection,
   validateTeam,
 } from "./domain.js";
-import { tagComparisonKey } from "./tag-rules.js";
+import { tagComparisonIncludes, tagComparisonKey } from "./tag-rules.js";
 
 const elements = {
   clearCell: document.querySelector("#clear-cell"),
@@ -222,15 +222,11 @@ async function transitionMission(mission, status, completion = null, context = {
   }
 }
 
-function normalizedMissionQuery(value) {
-  return value.trim().toLocaleLowerCase("de").normalize("NFD").replace(/\p{Diacritic}/gu, "");
-}
-
 function filteredMissions() {
-  const query = normalizedMissionQuery(missionState.query);
+  const query = missionState.query.trim();
   return missionState.missions.filter((mission) => {
-    const haystack = normalizedMissionQuery(`${mission.title} ${mission.outcome} ${mission.tags.join(" ")} ${mission.agents.map(({ name, role }) => `${name} ${role}`).join(" ")}`);
-    return missionState.statuses.has(mission.status) && (!query || haystack.includes(query));
+    const fields = [mission.title, mission.outcome, ...mission.tags, ...mission.agents.flatMap(({ name, role }) => [name, role])];
+    return missionState.statuses.has(mission.status) && (!query || fields.some((value) => tagComparisonIncludes(value, query)));
   });
 }
 

@@ -147,15 +147,14 @@ test("Missionsakte wird erstellt, über Hash fortgesetzt und vorwärts abgeschlo
 });
 
 test("Tags folgen dem gemeinsamen Vertrag in Browser, Anzeige, Bearbeitung und Suche", async ({ page }) => {
-  const title = `Tag-Vertrag-${Date.now()}`;
+  const title = `Tag-Case-${Date.now()}`;
   await page.setViewportSize({ width: 320, height: 800 });
-  await page.goto("/");
-  await page.getByRole("button", { name: "Zur Arbeitszelle hinzufügen" }).first().click();
+  await page.goto("/#cell=deviheavy");
   await page.getByRole("button", { name: "Missionsakte erstellen" }).click();
   await page.getByLabel("Titel").fill(title);
-  await page.getByLabel("Gewünschtes Ergebnis").fill("Tags bleiben sichtbar");
-  await page.getByLabel("Randbedingungen").fill("Keine");
-  await page.getByLabel("Kriterium 1").fill("Prüfbar");
+  await page.getByLabel("Gewünschtes Ergebnis").fill("Tags ok");
+  await page.getByLabel("Randbedingungen").fill("Nur");
+  await page.getByLabel("Kriterium 1").fill("Test");
   const tags = page.getByLabel("Tags (eine Klartextangabe pro Zeile, optional)");
   await tags.fill("Release\nrelease");
   await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
@@ -165,7 +164,7 @@ test("Tags folgen dem gemeinsamen Vertrag in Browser, Anzeige, Bearbeitung und S
   await tags.fill("Ä\nA\u0308");
   await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
   await expect(page.locator("#mission-validation-summary")).toContainText("eindeutig ohne Unterschied bei Groß-/Kleinschreibung");
-  await tags.fill("①\n1\nİ\ni");
+  await tags.fill("①\n1\nStraße\nİ\ni");
   await page.getByRole("button", { name: "Missionsakte anlegen" }).click();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await page.getByRole("button", { name: "Missionsakte bearbeiten" }).click();
@@ -183,9 +182,15 @@ test("Tags folgen dem gemeinsamen Vertrag in Browser, Anzeige, Bearbeitung und S
   await tags.fill("Erste Schreibweise");
   await page.getByRole("button", { name: "Missionsakte speichern" }).click();
   await expect(page.getByText("Erste Schreibweise", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Missionsakte bearbeiten" }).click();
+  await tags.fill("Straße\nİ");
+  await page.getByRole("button", { name: "Missionsakte speichern" }).click();
   await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
-  await page.getByRole("searchbox", { name: "Missionen durchsuchen" }).fill("erste schreibweise");
-  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Erste Schreibweise");
+  const missionSearch = page.getByRole("searchbox", { name: "Missionen durchsuchen" });
+  await missionSearch.fill("STRASSE");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Straße");
+  await missionSearch.fill("İ");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("İ");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
