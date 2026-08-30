@@ -183,7 +183,7 @@ test("Tags folgen dem gemeinsamen Vertrag in Browser, Anzeige, Bearbeitung und S
   await page.getByRole("button", { name: "Missionsakte speichern" }).click();
   await expect(page.getByText("Erste Schreibweise", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Missionsakte bearbeiten" }).click();
-  await tags.fill("Straße\nİ");
+  await tags.fill("Straße\nÄ\nſ\nﬃ\nＡ");
   await page.getByRole("button", { name: "Missionsakte speichern" }).click();
   await page.getByRole("button", { name: "Zur Missionsübersicht" }).click();
   const missionSearch = page.getByRole("searchbox", { name: "Missionen durchsuchen" });
@@ -193,10 +193,16 @@ test("Tags folgen dem gemeinsamen Vertrag in Browser, Anzeige, Bearbeitung und S
   await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Straße");
   await missionSearch.fill("\u0308");
   await expect(page.locator(".mission-list__item")).toHaveCount(0);
-  await missionSearch.fill("İ");
-  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("İ");
+  await missionSearch.fill("s");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("ſ");
   await missionSearch.fill("ffi");
-  await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(0);
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("ﬃ");
+  await missionSearch.fill("ａ");
+  await expect(page.locator(".mission-list__item", { hasText: title })).toContainText("Ａ");
+  for (const query of ["fb03", "u{fb", "\\u{fb03}", "17f", "2460"]) {
+    await missionSearch.fill(query);
+    await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(0);
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -218,7 +224,7 @@ test("Missionssuche bewahrt die diakritika-unabhängigen allgemeinen Felder", as
   await search.fill(`creme-${marker}`);
   await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(1);
   await search.fill(`ffi-${marker}`);
-  await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(0);
+  await expect(page.locator(".mission-list__item", { hasText: title })).toHaveCount(1);
 });
 
 test("Missionsübersicht sucht, filtert, sortiert und öffnet per Hash", async ({ page }) => {
